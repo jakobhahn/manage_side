@@ -1,0 +1,79 @@
+# Getting Started
+
+This guide will help you set up your development environment for the Hans Restaurant App.
+
+## Prerequisites
+
+- Node.js 18+ and pnpm
+- Git
+- Docker (for local services)
+- Supabase CLI
+- Doppler CLI (for secrets)
+
+## Development Setup
+
+### 1. Clone the Repository
+
+```bash
+git clone https://github.com/hansinlack/app.git
+cd app
+```
+
+### 2. Install Dependencies
+
+```bash
+pnpm install
+```
+
+### 3. Environment Setup
+
+```bash
+# Install Doppler CLI
+curl -Ls https://cli.doppler.com/install.sh | sh
+
+# Login to Doppler
+doppler login
+
+# Setup environment
+doppler setup
+```
+
+### 4. Start Development Services
+
+```bash
+# Start local services (n8n, mailhog, etc.)
+docker-compose up -d
+
+# Start Supabase locally
+supabase start
+
+# Start the development server
+pnpm dev
+```
+
+## Project Structure
+
+```
+app/
+├── docs/           # Documentation (Nextra)
+├── apps/           # Applications
+│   ├── web/        # Next.js web app
+│   └── mobile/     # React Native app
+├── packages/       # Shared packages
+│   ├── ui/         # UI components
+│   ├── utils/      # Utilities
+│   └── types/      # TypeScript types
+└── tools/          # Build tools and configs
+```
+
+## Next Steps
+
+- Read the [Project Tooling](/tooling) guide
+- Check out the [Architecture](/architecture) documentation
+- Review the [API Reference](/api)
+
+## Getting Help
+
+- Join our Slack workspace
+- Check Linear for issues and tasks
+- Review the [Onboarding Playbook](/onboarding)

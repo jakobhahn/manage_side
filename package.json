@@ -1,0 +1,41 @@
+{
+  "name": "hans-restaurant-app",
+  "version": "1.0.0",
+  "description": "Modular restaurant management application",
+  "private": true,
+  "workspaces": [
+    "apps/*",
+    "packages/*",
+    "tools/*",
+    "docs"
+  ],
+  "scripts": {
+    "build": "turbo run build",
+    "dev": "turbo run dev",
+    "lint": "turbo run lint",
+    "test": "turbo run test",
+    "type-check": "turbo run type-check",
+    "clean": "turbo run clean",
+    "docs:dev": "cd docs && npm run dev",
+    "docs:build": "cd docs && npm run build"
+  },
+  "devDependencies": {
+    "turbo": "^2.5.6"
+  },
+  "packageManager": "pnpm@9.15.0",
+  "engines": {
+    "node": ">=18.0.0",
+    "pnpm": ">=8.0.0"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/hansinlack/app.git"
+  },
+  "keywords": ["restaurant", "app", "monorepo", "nextjs", "supabase"],
+  "author": "Hans Restaurant App Team",
+  "license": "MIT",
+  "bugs": {
+    "url": "https://github.com/hansinlack/app/issues"
+  },
+  "homepage": "https://github.com/hansinlack/app#readme"
+}
