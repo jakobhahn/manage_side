@@ -1,0 +1,299 @@
+# Architecture
+
+This document describes the overall architecture of the Hans Restaurant App, including system design, technology choices, and data flow.
+
+## System Overview
+
+The Hans Restaurant App is built as a modern, scalable restaurant management system with the following key components:
+
+```mermaid
+graph TB
+    subgraph "Frontend"
+        Web[Next.js Web App]
+        Mobile[React Native Mobile]
+    end
+    
+    subgraph "Backend Services"
+        API[Next.js API Routes]
+        Auth[Supabase Auth]
+        DB[(Supabase Postgres)]
+        Storage[Supabase Storage]
+    end
+    
+    subgraph "External Services"
+        n8n[n8n Automation]
+        Vercel[Vercel Hosting]
+        Doppler[Doppler Secrets]
+    end
+    
+    Web --> API
+    Mobile --> API
+    API --> Auth
+    API --> DB
+    API --> Storage
+    API --> n8n
+    Web --> Vercel
+    API --> Doppler
+```
+
+## Technology Stack
+
+### Frontend
+- **Next.js 15** - React framework with App Router
+- **TypeScript** - Type-safe development
+- **Tailwind CSS** - Utility-first CSS framework
+- **shadcn/ui** - Component library
+- **React Native** - Mobile app (planned)
+
+### Backend
+- **Next.js API Routes** - Serverless API endpoints
+- **Supabase** - Backend-as-a-Service
+  - PostgreSQL database
+  - Authentication
+  - Real-time subscriptions
+  - File storage
+- **n8n** - Workflow automation
+
+### Infrastructure
+- **Vercel** - Hosting and deployment
+- **Turborepo** - Monorepo build system
+- **pnpm** - Package manager
+- **GitHub Actions** - CI/CD pipeline
+
+## Data Architecture
+
+### Database Schema
+
+```mermaid
+erDiagram
+    USERS ||--o{ ORDERS : places
+    USERS ||--o{ RESERVATIONS : makes
+    RESTAURANTS ||--o{ MENU_ITEMS : contains
+    RESTAURANTS ||--o{ TABLES : has
+    ORDERS ||--o{ ORDER_ITEMS : contains
+    ORDER_ITEMS }o--|| MENU_ITEMS : references
+    TABLES ||--o{ ORDERS : serves
+    TABLES ||--o{ RESERVATIONS : reserved_for
+    
+    USERS {
+        uuid id PK
+        string email
+        string name
+        string role
+        timestamp created_at
+    }
+    
+    RESTAURANTS {
+        uuid id PK
+        string name
+        string address
+        json settings
+        timestamp created_at
+    }
+    
+    MENU_ITEMS {
+        uuid id PK
+        uuid restaurant_id FK
+        string name
+        text description
+        decimal price
+        string category
+        boolean available
+    }
+    
+    TABLES {
+        uuid id PK
+        uuid restaurant_id FK
+        string number
+        integer capacity
+        string status
+    }
+    
+    ORDERS {
+        uuid id PK
+        uuid user_id FK
+        uuid table_id FK
+        string status
+        decimal total
+        timestamp created_at
+    }
+    
+    ORDER_ITEMS {
+        uuid id PK
+        uuid order_id FK
+        uuid menu_item_id FK
+        integer quantity
+        decimal price
+    }
+    
+    RESERVATIONS {
+        uuid id PK
+        uuid user_id FK
+        uuid table_id FK
+        timestamp date_time
+        integer party_size
+        string status
+    }
+```
+
+## API Design
+
+### RESTful Endpoints
+
+```typescript
+// Authentication
+POST   /api/auth/login
+POST   /api/auth/logout
+POST   /api/auth/register
+
+// Menu Management
+GET    /api/menu
+POST   /api/menu
+PUT    /api/menu/:id
+DELETE /api/menu/:id
+
+// Order Management
+GET    /api/orders
+POST   /api/orders
+PUT    /api/orders/:id
+GET    /api/orders/:id/items
+
+// Table Management
+GET    /api/tables
+POST   /api/tables
+PUT    /api/tables/:id
+GET    /api/tables/:id/status
+
+// Reservations
+GET    /api/reservations
+POST   /api/reservations
+PUT    /api/reservations/:id
+DELETE /api/reservations/:id
+```
+
+### Real-time Features
+
+- **Order Status Updates** - Real-time order tracking
+- **Table Availability** - Live table status updates
+- **Kitchen Notifications** - New order alerts
+- **Reservation Updates** - Real-time booking changes
+
+## Security Architecture
+
+### Authentication & Authorization
+
+```mermaid
+sequenceDiagram
+    participant User
+    participant WebApp
+    participant Supabase
+    participant API
+    
+    User->>WebApp: Login Request
+    WebApp->>Supabase: Authenticate
+    Supabase-->>WebApp: JWT Token
+    WebApp->>API: Request with JWT
+    API->>Supabase: Verify Token
+    Supabase-->>API: User Data
+    API-->>WebApp: Authorized Response
+```
+
+### Security Measures
+
+- **JWT Authentication** - Secure token-based auth
+- **Row Level Security (RLS)** - Database-level access control
+- **CORS Configuration** - Cross-origin request security
+- **Input Validation** - Zod schema validation
+- **Rate Limiting** - API request throttling
+- **HTTPS Only** - Encrypted communication
+
+## Deployment Architecture
+
+### Environment Strategy
+
+```mermaid
+graph LR
+    subgraph "Development"
+        Dev[Local Development]
+        DevDB[(Local Supabase)]
+    end
+    
+    subgraph "Staging"
+        Staging[Vercel Preview]
+        StagingDB[(Supabase Staging)]
+    end
+    
+    subgraph "Production"
+        Prod[Vercel Production]
+        ProdDB[(Supabase Production)]
+    end
+    
+    Dev --> Staging
+    Staging --> Prod
+```
+
+### CI/CD Pipeline
+
+1. **Code Push** - Developer pushes to feature branch
+2. **Pull Request** - Automated checks run
+3. **Preview Deployment** - Vercel creates preview
+4. **Code Review** - Team reviews changes
+5. **Merge to Main** - Production deployment triggered
+6. **Database Migration** - Automated schema updates
+
+## Performance Considerations
+
+### Frontend Optimization
+
+- **Code Splitting** - Lazy loading of components
+- **Image Optimization** - Next.js Image component
+- **Caching Strategy** - Static generation where possible
+- **Bundle Analysis** - Regular bundle size monitoring
+
+### Backend Optimization
+
+- **Database Indexing** - Optimized query performance
+- **Connection Pooling** - Efficient database connections
+- **Caching Layer** - Redis for frequently accessed data
+- **CDN Integration** - Global content delivery
+
+## Monitoring & Observability
+
+### Application Monitoring
+
+- **Sentry** - Error tracking and performance monitoring
+- **Vercel Analytics** - Web vitals and user behavior
+- **Supabase Dashboard** - Database performance metrics
+
+### Infrastructure Monitoring
+
+- **Uptime Monitoring** - Health checks and alerts
+- **Log Aggregation** - Centralized logging
+- **Performance Metrics** - Response time tracking
+
+## Future Considerations
+
+### Scalability
+
+- **Microservices Migration** - Break down monolith as needed
+- **Database Sharding** - Horizontal scaling strategy
+- **CDN Expansion** - Global content delivery
+- **Caching Strategy** - Multi-layer caching
+
+### Technology Evolution
+
+- **React Server Components** - Enhanced server-side rendering
+- **Edge Computing** - Vercel Edge Functions
+- **AI Integration** - Smart recommendations and automation
+- **Mobile App** - React Native implementation
+
+## Decision Records
+
+For detailed architectural decisions, see our [Architecture Decision Records (ADRs)](/adr/template).
+
+## Related Documentation
+
+- [Getting Started](/getting-started) - Development setup
+- [Project Tooling](/tooling) - Development tools and workflows
+- [API Reference](/api) - Detailed API documentation
+- [Deployment Guide](/deployment) - Production deployment process

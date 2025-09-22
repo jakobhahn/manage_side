@@ -66,14 +66,238 @@ app/
 └── tools/          # Build tools and configs
 ```
 
+## Development Commands
+
+### Start Development Server
+
+```bash
+# Start all services (web app, docs, shared packages)
+pnpm dev
+
+# Start only the web app
+pnpm --filter @hans/web dev
+
+# Start only documentation
+pnpm --filter docs dev
+```
+
+### Build and Test
+
+```bash
+# Build all packages
+pnpm build
+
+# Run type checking
+pnpm type-check
+
+# Run linting
+pnpm lint
+
+# Run tests
+pnpm test
+
+# Clean build artifacts
+pnpm clean
+```
+
+### Package Management
+
+```bash
+# Add dependency to specific package
+pnpm --filter @hans/web add react-query
+
+# Add dev dependency to root
+pnpm add -D -w typescript
+
+# Update all dependencies
+pnpm update --recursive
+```
+
+## Available URLs
+
+Once the development server is running:
+
+- **Web App**: http://localhost:3000
+- **Documentation**: http://localhost:3001
+- **API Health Check**: http://localhost:3000/api/health
+
+## Project Structure
+
+```
+hans-restaurant-app/
+├── apps/                    # Applications
+│   └── web/                # Next.js web application
+│       ├── src/
+│       │   ├── app/        # App Router pages
+│       │   ├── components/ # React components
+│       │   └── lib/        # Utilities
+│       ├── public/         # Static assets
+│       └── package.json
+├── packages/               # Shared packages
+│   ├── types/             # TypeScript type definitions
+│   ├── utils/             # Utility functions
+│   └── config/            # Configuration management
+├── tools/                 # Build tools and configs
+│   ├── eslint-config/     # ESLint configurations
+│   └── typescript-config/ # TypeScript configurations
+├── docs/                  # Documentation (Nextra)
+│   ├── pages/             # Documentation pages
+│   └── theme.config.jsx   # Nextra theme config
+├── .github/               # GitHub Actions workflows
+├── turbo.json            # Turborepo configuration
+├── pnpm-workspace.yaml   # pnpm workspace config
+└── package.json          # Root package.json
+```
+
+## Development Workflow
+
+### 1. Feature Development
+
+```bash
+# Create feature branch
+git checkout -b feature/new-feature
+
+# Make changes and test locally
+pnpm dev
+
+# Run tests and linting
+pnpm test
+pnpm lint
+
+# Commit changes
+git add .
+git commit -m "feat: add new feature"
+
+# Push and create PR
+git push origin feature/new-feature
+```
+
+### 2. Code Quality
+
+- **TypeScript**: Strict mode enabled, all code must be typed
+- **ESLint**: Code quality and consistency rules
+- **Prettier**: Code formatting (configured via ESLint)
+- **Husky**: Pre-commit hooks for quality checks
+
+### 3. Testing Strategy
+
+- **Unit Tests**: Vitest for component and utility testing
+- **Integration Tests**: API endpoint testing
+- **E2E Tests**: Playwright for full user journey testing
+- **Type Checking**: TypeScript compiler checks
+
+## Environment Configuration
+
+### Local Development
+
+Create `.env.local` in the web app:
+
+```bash
+# Supabase Configuration
+NEXT_PUBLIC_SUPABASE_URL=http://localhost:54321
+NEXT_PUBLIC_SUPABASE_ANON_KEY=your-local-anon-key
+
+# Application Configuration
+NEXT_PUBLIC_APP_URL=http://localhost:3000
+NODE_ENV=development
+```
+
+### Using Doppler (Recommended)
+
+```bash
+# Install Doppler CLI
+curl -Ls https://cli.doppler.com/install.sh | sh
+
+# Login to Doppler
+doppler login
+
+# Setup project
+doppler setup --project hans-restaurant --config dev
+
+# Run development server with secrets
+doppler run -- pnpm dev
+```
+
+## Database Setup
+
+### Local Supabase
+
+```bash
+# Install Supabase CLI
+npm install -g supabase
+
+# Start local Supabase
+supabase start
+
+# Run migrations
+supabase db reset
+
+# Generate types
+supabase gen types typescript --local > packages/types/src/database.ts
+```
+
+### Database Migrations
+
+```bash
+# Create new migration
+supabase migration new add_user_roles
+
+# Apply migrations
+supabase db push
+
+# Reset database
+supabase db reset
+```
+
+## Troubleshooting
+
+### Common Issues
+
+#### Port Already in Use
+
+```bash
+# Kill process on port 3000
+lsof -ti:3000 | xargs kill -9
+
+# Kill process on port 3001
+lsof -ti:3001 | xargs kill -9
+```
+
+#### Build Failures
+
+```bash
+# Clear all caches
+pnpm clean
+rm -rf node_modules
+rm -rf apps/*/node_modules
+rm -rf packages/*/node_modules
+rm -rf tools/*/node_modules
+
+# Reinstall dependencies
+pnpm install
+```
+
+#### TypeScript Errors
+
+```bash
+# Regenerate types
+pnpm --filter @hans/types build
+
+# Check type errors
+pnpm type-check
+```
+
+### Getting Help
+
+- **Documentation**: Check the [Architecture](/architecture) and [API Reference](/api)
+- **Issues**: Create GitHub issues for bugs or feature requests
+- **Discussions**: Use GitHub Discussions for questions
+- **Team Chat**: Join our Slack workspace for real-time help
+
 ## Next Steps
 
-- Read the [Project Tooling](/tooling) guide
-- Check out the [Architecture](/architecture) documentation
-- Review the [API Reference](/api)
-
-## Getting Help
-
-- Join our Slack workspace
-- Check Linear for issues and tasks
-- Review the [Onboarding Playbook](/onboarding)
+- Read the [Project Tooling](/tooling) guide for development tools
+- Check out the [Architecture](/architecture) documentation for system design
+- Review the [API Reference](/api) for endpoint documentation
+- Follow the [Deployment Guide](/deployment) for production setup
+- Complete the [Onboarding Playbook](/onboarding) for team processes

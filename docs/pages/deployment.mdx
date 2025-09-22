@@ -1,0 +1,528 @@
+# Deployment Guide
+
+This guide covers the deployment process for the Hans Restaurant App, including environment setup, CI/CD pipeline, and production deployment.
+
+## Overview
+
+The Hans Restaurant App uses a modern deployment strategy with:
+
+- **Vercel** for frontend hosting and serverless functions
+- **Supabase** for backend services (database, auth, storage)
+- **GitHub Actions** for CI/CD automation
+- **Doppler** for secrets management
+
+## Environment Setup
+
+### 1. Vercel Configuration
+
+#### Project Setup
+
+1. Connect your GitHub repository to Vercel
+2. Configure build settings:
+
+```json
+{
+  "buildCommand": "pnpm build",
+  "outputDirectory": "apps/web/.next",
+  "installCommand": "pnpm install",
+  "framework": "nextjs"
+}
+```
+
+#### Environment Variables
+
+Set the following environment variables in Vercel:
+
+```bash
+# Supabase Configuration
+NEXT_PUBLIC_SUPABASE_URL=https://your-project.supabase.co
+NEXT_PUBLIC_SUPABASE_ANON_KEY=your-anon-key
+SUPABASE_SERVICE_ROLE_KEY=your-service-role-key
+
+# Application Configuration
+NEXT_PUBLIC_APP_URL=https://hans-restaurant-app.vercel.app
+NODE_ENV=production
+
+# Doppler Integration (optional)
+DOPPLER_TOKEN=your-doppler-token
+```
+
+### 2. Supabase Configuration
+
+#### Database Setup
+
+1. Create a new Supabase project
+2. Run database migrations:
+
+```bash
+# Install Supabase CLI
+npm install -g supabase
+
+# Login to Supabase
+supabase login
+
+# Link to your project
+supabase link --project-ref your-project-ref
+
+# Run migrations
+supabase db push
+```
+
+#### Row Level Security (RLS)
+
+Enable RLS on all tables and configure policies:
+
+```sql
+-- Enable RLS on users table
+ALTER TABLE users ENABLE ROW LEVEL SECURITY;
+
+-- Create policy for users to see their own data
+CREATE POLICY "Users can view own profile" ON users
+  FOR SELECT USING (auth.uid() = id);
+
+-- Create policy for restaurant staff to see all users
+CREATE POLICY "Staff can view all users" ON users
+  FOR SELECT USING (
+    EXISTS (
+      SELECT 1 FROM users 
+      WHERE id = auth.uid() 
+      AND role IN ('manager', 'staff')
+    )
+  );
+```
+
+### 3. Doppler Secrets Management
+
+#### Setup Doppler
+
+1. Create a Doppler account and project
+2. Install Doppler CLI:
+
+```bash
+curl -Ls https://cli.doppler.com/install.sh | sh
+```
+
+3. Login and setup:
+
+```bash
+doppler login
+doppler setup --project hans-restaurant --config production
+```
+
+#### Sync Secrets to Vercel
+
+```bash
+# Install Vercel CLI
+npm install -g vercel
+
+# Login to Vercel
+vercel login
+
+# Sync secrets from Doppler to Vercel
+doppler secrets download --no-file --format env | vercel env add
+```
+
+## CI/CD Pipeline
+
+### GitHub Actions Workflow
+
+Create `.github/workflows/deploy.yml`:
+
+```yaml
+name: Deploy
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '18'
+          
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v2
+        with:
+          version: 9
+          
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+        
+      - name: Run type check
+        run: pnpm type-check
+        
+      - name: Run linting
+        run: pnpm lint
+        
+      - name: Run tests
+        run: pnpm test
+        
+      - name: Build applications
+        run: pnpm build
+
+  deploy:
+    needs: test
+    runs-on: ubuntu-latest
+    if: github.ref == 'refs/heads/main'
+    steps:
+      - uses: actions/checkout@v4
+      
+      - name: Deploy to Vercel
+        uses: amondnet/vercel-action@v25
+        with:
+          vercel-token: ${{ secrets.VERCEL_TOKEN }}
+          vercel-org-id: ${{ secrets.VERCEL_ORG_ID }}
+          vercel-project-id: ${{ secrets.VERCEL_PROJECT_ID }}
+          vercel-args: '--prod'
+          
+      - name: Run database migrations
+        run: |
+          supabase db push --project-ref ${{ secrets.SUPABASE_PROJECT_REF }}
+        env:
+          SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
+```
+
+### Required Secrets
+
+Add these secrets to your GitHub repository:
+
+```bash
+# Vercel
+VERCEL_TOKEN=your-vercel-token
+VERCEL_ORG_ID=your-org-id
+VERCEL_PROJECT_ID=your-project-id
+
+# Supabase
+SUPABASE_PROJECT_REF=your-project-ref
+SUPABASE_ACCESS_TOKEN=your-access-token
+
+# Doppler (optional)
+DOPPLER_TOKEN=your-doppler-token
+```
+
+## Deployment Process
+
+### 1. Development Deployment
+
+For feature branches, Vercel automatically creates preview deployments:
+
+```bash
+# Push to feature branch
+git push origin feature/new-feature
+
+# Vercel creates preview URL automatically
+# Check GitHub PR for deployment link
+```
+
+### 2. Staging Deployment
+
+```bash
+# Merge to staging branch
+git checkout staging
+git merge feature/new-feature
+git push origin staging
+
+# Vercel deploys to staging environment
+# URL: https://hans-restaurant-app-git-staging.vercel.app
+```
+
+### 3. Production Deployment
+
+```bash
+# Merge to main branch
+git checkout main
+git merge staging
+git push origin main
+
+# GitHub Actions triggers:
+# 1. Run tests and build
+# 2. Deploy to Vercel production
+# 3. Run database migrations
+```
+
+## Database Migrations
+
+### Creating Migrations
+
+```bash
+# Create a new migration
+supabase migration new add_menu_categories
+
+# Edit the migration file
+# supabase/migrations/20240115120000_add_menu_categories.sql
+```
+
+### Migration Example
+
+```sql
+-- Add menu categories table
+CREATE TABLE menu_categories (
+  id UUID DEFAULT gen_random_uuid() PRIMARY KEY,
+  name VARCHAR(100) NOT NULL,
+  description TEXT,
+  sort_order INTEGER DEFAULT 0,
+  created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+  updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+);
+
+-- Add category_id to menu_items
+ALTER TABLE menu_items 
+ADD COLUMN category_id UUID REFERENCES menu_categories(id);
+
+-- Create index for better performance
+CREATE INDEX idx_menu_items_category_id ON menu_items(category_id);
+
+-- Enable RLS
+ALTER TABLE menu_categories ENABLE ROW LEVEL SECURITY;
+
+-- Create policies
+CREATE POLICY "Anyone can view categories" ON menu_categories
+  FOR SELECT USING (true);
+```
+
+### Running Migrations
+
+```bash
+# Local development
+supabase db reset
+
+# Staging
+supabase db push --project-ref staging-project-ref
+
+# Production
+supabase db push --project-ref production-project-ref
+```
+
+## Monitoring & Health Checks
+
+### Health Check Endpoint
+
+Create `apps/web/src/app/api/health/route.ts`:
+
+```typescript
+import { NextResponse } from 'next/server';
+import { createClient } from '@supabase/supabase-js';
+
+export async function GET() {
+  try {
+    // Check database connection
+    const supabase = createClient(
+      process.env.NEXT_PUBLIC_SUPABASE_URL!,
+      process.env.SUPABASE_SERVICE_ROLE_KEY!
+    );
+    
+    const { data, error } = await supabase
+      .from('users')
+      .select('count')
+      .limit(1);
+      
+    if (error) throw error;
+    
+    return NextResponse.json({
+      status: 'healthy',
+      timestamp: new Date().toISOString(),
+      services: {
+        database: 'connected',
+        api: 'running'
+      }
+    });
+  } catch (error) {
+    return NextResponse.json(
+      {
+        status: 'unhealthy',
+        timestamp: new Date().toISOString(),
+        error: error.message
+      },
+      { status: 500 }
+    );
+  }
+}
+```
+
+### Uptime Monitoring
+
+Configure monitoring with services like:
+
+- **UptimeRobot** - Free uptime monitoring
+- **Better Stack** - Advanced monitoring with alerts
+- **Healthchecks.io** - Simple health check monitoring
+
+Example configuration:
+
+```yaml
+# uptimerobot.yml
+monitors:
+  - name: "Hans Restaurant App"
+    url: "https://hans-restaurant-app.vercel.app/api/health"
+    interval: 300
+    timeout: 30
+    retries: 3
+    contacts:
+      - email: "admin@hans-restaurant.com"
+      - slack: "#alerts"
+```
+
+## Rollback Strategy
+
+### Database Rollback
+
+```bash
+# List migration history
+supabase migration list
+
+# Rollback to specific migration
+supabase db reset --db-url "postgresql://..." --version 20240115000000
+```
+
+### Application Rollback
+
+```bash
+# Rollback to previous Vercel deployment
+vercel rollback
+
+# Or redeploy specific commit
+vercel --prod --force
+```
+
+## Performance Optimization
+
+### Vercel Configuration
+
+```json
+{
+  "functions": {
+    "apps/web/src/app/api/**/*.ts": {
+      "maxDuration": 30
+    }
+  },
+  "regions": ["iad1"],
+  "framework": "nextjs"
+}
+```
+
+### Database Optimization
+
+```sql
+-- Add indexes for common queries
+CREATE INDEX CONCURRENTLY idx_orders_created_at ON orders(created_at);
+CREATE INDEX CONCURRENTLY idx_orders_status ON orders(status);
+CREATE INDEX CONCURRENTLY idx_reservations_date_time ON reservations(date_time);
+
+-- Analyze query performance
+EXPLAIN ANALYZE SELECT * FROM orders WHERE status = 'pending';
+```
+
+## Security Considerations
+
+### Environment Variables
+
+- Never commit secrets to version control
+- Use Doppler or similar service for secret management
+- Rotate secrets regularly
+- Use different secrets for each environment
+
+### Database Security
+
+```sql
+-- Restrict database access
+REVOKE ALL ON SCHEMA public FROM PUBLIC;
+GRANT USAGE ON SCHEMA public TO authenticated;
+GRANT ALL ON ALL TABLES IN SCHEMA public TO authenticated;
+
+-- Enable audit logging
+CREATE EXTENSION IF NOT EXISTS pgaudit;
+ALTER SYSTEM SET pgaudit.log = 'all';
+```
+
+### API Security
+
+```typescript
+// Rate limiting middleware
+import { Ratelimit } from '@upstash/ratelimit';
+import { Redis } from '@upstash/redis';
+
+const ratelimit = new Ratelimit({
+  redis: Redis.fromEnv(),
+  limiter: Ratelimit.slidingWindow(10, '1 m'),
+});
+
+export async function middleware(request: NextRequest) {
+  const ip = request.ip ?? '127.0.0.1';
+  const { success } = await ratelimit.limit(ip);
+  
+  if (!success) {
+    return new Response('Too Many Requests', { status: 429 });
+  }
+}
+```
+
+## Troubleshooting
+
+### Common Issues
+
+#### Build Failures
+
+```bash
+# Clear Vercel build cache
+vercel --prod --force
+
+# Check build logs
+vercel logs --follow
+```
+
+#### Database Connection Issues
+
+```bash
+# Test database connection
+supabase db ping
+
+# Check connection pool
+SELECT * FROM pg_stat_activity WHERE state = 'active';
+```
+
+#### Environment Variable Issues
+
+```bash
+# Verify environment variables
+vercel env ls
+
+# Pull latest environment variables
+doppler secrets download --no-file --format env
+```
+
+### Debug Mode
+
+Enable debug logging:
+
+```bash
+# Set debug environment variable
+NEXT_PUBLIC_DEBUG=true
+
+# Check logs
+vercel logs --follow
+```
+
+## Best Practices
+
+1. **Always test migrations** on staging before production
+2. **Use feature flags** for gradual rollouts
+3. **Monitor performance** after each deployment
+4. **Keep secrets secure** and rotate regularly
+5. **Document deployment procedures** for team members
+6. **Use semantic versioning** for releases
+7. **Automate everything** possible in CI/CD pipeline
+
+## Related Documentation
+
+- [Architecture](/architecture) - System architecture overview
+- [API Reference](/api) - API endpoint documentation
+- [Getting Started](/getting-started) - Development setup
+- [Project Tooling](/tooling) - Development tools and workflows

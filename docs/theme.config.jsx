@@ -32,6 +32,10 @@ const config = {
     defaultMenuCollapseLevel: 1,
     toggleButton: true
   },
+  navigation: {
+    prev: true,
+    next: true
+  },
   toc: {
     backToTop: true
   }
