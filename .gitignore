@@ -35,5 +35,10 @@ yarn-error.log*
 *.tsbuildinfo
 next-env.d.ts
 docs/.next/
+apps/*/.next/
+.turbo/
+**/.turbo/
 node_modules/
 **/node_modules/
+package-lock.json
+**/package-lock.json
