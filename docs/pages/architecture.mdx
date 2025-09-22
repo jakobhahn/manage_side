@@ -1,39 +1,72 @@
 # Architecture
 
-This document describes the overall architecture of the Hans Restaurant App, including system design, technology choices, and data flow.
+This document describes the overall architecture of the Hans Restaurant Management Platform, a modular SaaS solution for restaurant management with integrated payment processing.
 
 ## System Overview
 
-The Hans Restaurant App is built as a modern, scalable restaurant management system with the following key components:
+The Hans Restaurant Management Platform is built as a comprehensive, modular SaaS system with the following key components:
 
 ```mermaid
 graph TB
+    subgraph "Payment Integration"
+        SumUp[SumUp Payment System]
+        Webhook[Payment Webhooks]
+    end
+    
     subgraph "Frontend"
-        Web[Next.js Web App]
-        Mobile[React Native Mobile]
+        Web[Next.js Web App - PWA]
+        Mobile[Mobile-First Design]
+    end
+    
+    subgraph "Core Platform"
+        Auth[Supabase Auth & RLS]
+        Modules[Module Registry]
+        Billing[Subscription Management]
     end
     
     subgraph "Backend Services"
         API[Next.js API Routes]
-        Auth[Supabase Auth]
         DB[(Supabase Postgres)]
         Storage[Supabase Storage]
+        Edge[Supabase Edge Functions]
     end
     
-    subgraph "External Services"
-        n8n[n8n Automation]
+    subgraph "Automation & Integration"
+        n8n[n8n Workflows]
         Vercel[Vercel Hosting]
-        Doppler[Doppler Secrets]
+        Cursor[Cursor AI Development]
     end
     
+    subgraph "Available Modules"
+        Revenue[Revenue Analytics]
+        Schedule[Shift Planning]
+        Inventory[Inventory Management]
+        TimeClock[Time Clock]
+        Sales[Sales Management]
+        KPIs[KPI Dashboard]
+        Reports[Reporting]
+        Menu[Menu Management]
+    end
+    
+    SumUp --> Webhook
+    Webhook --> n8n
+    n8n --> DB
     Web --> API
     Mobile --> API
     API --> Auth
     API --> DB
     API --> Storage
-    API --> n8n
-    Web --> Vercel
-    API --> Doppler
+    API --> Edge
+    Auth --> Modules
+    Billing --> Modules
+    Modules --> Revenue
+    Modules --> Schedule
+    Modules --> Inventory
+    Modules --> TimeClock
+    Modules --> Sales
+    Modules --> KPIs
+    Modules --> Reports
+    Modules --> Menu
 ```
 
 ## Technology Stack
