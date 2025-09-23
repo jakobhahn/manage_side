@@ -30,8 +30,9 @@ export async function POST(request: NextRequest) {
     })
 
     if (authError) {
+      console.error('Auth error:', authError)
       return NextResponse.json(
-        { error: { message: authError.message } },
+        { error: { message: authError.message || 'Authentication failed' } },
         { status: 400 }
       )
     }
@@ -50,7 +51,7 @@ export async function POST(request: NextRequest) {
   } catch (error) {
     console.error('Signup error:', error)
     return NextResponse.json(
-      { error: { message: 'Internal server error' } },
+      { error: { message: error instanceof Error ? error.message : 'Internal server error' } },
       { status: 500 }
     )
   }

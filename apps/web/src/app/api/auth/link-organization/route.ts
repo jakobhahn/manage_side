@@ -16,11 +16,11 @@ export async function POST(request: NextRequest) {
     }
 
     const token = authHeader.split(' ')[1]
-    const { name, slug } = await request.json()
+    const { organizationSlug } = await request.json()
 
-    if (!name || !slug) {
+    if (!organizationSlug) {
       return NextResponse.json(
-        { error: { message: 'Organization name and slug are required' } },
+        { error: { message: 'Organization slug is required' } },
         { status: 400 }
       )
     }
@@ -38,84 +38,60 @@ export async function POST(request: NextRequest) {
       )
     }
 
-    // Check if organization slug already exists
-    const { data: existingOrg } = await supabase
+    // Find the organization by slug
+    const { data: organization, error: orgError } = await supabase
       .from('organizations')
+      .select('id, name, slug')
+      .eq('slug', organizationSlug)
+      .single()
+
+    if (orgError || !organization) {
+      return NextResponse.json(
+        { error: { message: 'Organization not found' } },
+        { status: 404 }
+      )
+    }
+
+    // Check if user already exists in the organization
+    const { data: existingUser } = await supabase
+      .from('users')
       .select('id')
-      .eq('slug', slug)
+      .eq('auth_id', user.id)
+      .eq('organization_id', organization.id)
       .single()
 
-    if (existingOrg) {
-      return NextResponse.json(
-        { error: { message: 'Organization slug already exists' } },
-        { status: 400 }
-      )
-    }
-
-    // Get user details
-    const ownerEmail = user.email || ''
-    const ownerName = user.user_metadata?.name || 'Unknown User'
-
-    // Create organization manually
-    const { data: orgData, error: orgError } = await supabase
-      .from('organizations')
-      .insert({
-        name,
-        slug
+    if (existingUser) {
+      return NextResponse.json({
+        message: 'User already linked to organization',
+        organization: organization
       })
-      .select()
-      .single()
-
-    if (orgError || !orgData) {
-      console.error('Organization creation error:', orgError)
-      return NextResponse.json(
-        { error: { message: 'Failed to create organization: ' + (orgError?.message || 'Unknown error') } },
-        { status: 500 }
-      )
     }
 
-    const orgId = orgData.id
-
-    // Create user profile
+    // Create user profile in the organization
     const { error: userProfileError } = await supabase
       .from('users')
       .insert({
         auth_id: user.id,
-        organization_id: orgId,
-        name: ownerName,
-        email: ownerEmail,
-        role: 'owner'
+        organization_id: organization.id,
+        name: user.user_metadata?.name || 'Unknown User',
+        email: user.email || '',
+        role: 'owner' // Default to owner for now
       })
 
     if (userProfileError) {
-      console.error('User creation error:', userProfileError)
+      console.error('User profile creation error:', userProfileError)
       return NextResponse.json(
         { error: { message: 'Failed to create user profile: ' + userProfileError.message } },
         { status: 500 }
       )
     }
 
-    // Create default module subscriptions
-    const { error: moduleError } = await supabase
-      .from('module_subscriptions')
-      .insert([
-        { organization_id: orgId, module_name: 'revenue_analytics', is_active: true },
-        { organization_id: orgId, module_name: 'kpi_dashboard', is_active: true }
-      ])
-
-    if (moduleError) {
-      console.error('Module subscription creation error:', moduleError)
-      // Don't fail the request, just log the error
-    }
-
-    console.log('Organization created successfully with ID:', orgId)
-
     // Update the user's organization_id in auth.users metadata
     const { error: updateError } = await supabase.auth.admin.updateUserById(
       user.id,
       {
         user_metadata: {
-          organization_id: orgId,
+          organization_id: organization.id,
           role: 'owner'
         }
       }
@@ -127,11 +103,11 @@ export async function POST(request: NextRequest) {
     }
 
     return NextResponse.json({
-      organizationId: orgId,
-      message: 'Organization created successfully'
+      message: 'User successfully linked to organization',
+      organization: organization
     })
   } catch (error) {
-    console.error('Organization creation error:', error)
+    console.error('Link organization error:', error)
     return NextResponse.json(
       { error: { message: 'Internal server error' } },
       { status: 500 }

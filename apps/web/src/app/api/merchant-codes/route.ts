@@ -68,28 +68,20 @@ export async function GET(request: NextRequest) {
 
     if (userDataError || !userData) {
       return NextResponse.json(
-        { error: { message: 'User not found' } },
+        { error: { message: 'User not found. Please create an organization first by going to /register' } },
         { status: 404 }
       )
     }
 
-    // Check if user has permission (owner or manager)
-    if (userData.role !== 'owner' && userData.role !== 'manager') {
-      return NextResponse.json(
-        { error: { message: 'Insufficient permissions' } },
-        { status: 403 }
-      )
-    }
-
-    // Fetch merchant codes for the organization
-    const { data: merchantCodes, error: merchantError } = await supabase
+    // Get merchant codes for the user's organization
+    const { data: merchantCodes, error: fetchError } = await supabase
       .from('merchant_codes')
-      .select('*')
+      .select('id, merchant_code, merchant_name, is_active, sync_status, created_at')
       .eq('organization_id', userData.organization_id)
       .order('created_at', { ascending: false })
 
-    if (merchantError) {
-      console.error('Merchant codes fetch error:', merchantError)
+    if (fetchError) {
+      console.error('Merchant codes fetch error:', fetchError)
       return NextResponse.json(
         { error: { message: 'Failed to fetch merchant codes' } },
         { status: 500 }
@@ -120,9 +112,9 @@ export async function POST(request: NextRequest) {
     const token = authHeader.split(' ')[1]
     const { merchant_code, description, api_key, api_secret } = await request.json()
 
-    if (!merchant_code || !description) {
+    if (!merchant_code) {
       return NextResponse.json(
-        { error: { message: 'merchant_code and description are required' } },
+        { error: { message: 'merchant_code is required' } },
         { status: 400 }
       )
     }
@@ -155,8 +147,9 @@ export async function POST(request: NextRequest) {
       .single()
 
     if (userDataError || !userData) {
+      console.error('User data fetch error:', userDataError)
       return NextResponse.json(
-        { error: { message: 'User not found' } },
+        { error: { message: 'User not found. Please create an organization first by going to /register' } },
         { status: 404 }
       )
     }
@@ -164,7 +157,7 @@ export async function POST(request: NextRequest) {
     // Check if user has permission (owner or manager)
     if (userData.role !== 'owner' && userData.role !== 'manager') {
       return NextResponse.json(
-        { error: { message: 'Insufficient permissions' } },
+        { error: { message: 'Insufficient permissions. Only owners and managers can create merchant codes.' } },
         { status: 403 }
       )
     }
@@ -194,7 +187,7 @@ export async function POST(request: NextRequest) {
       .insert({
         organization_id: userData.organization_id,
         merchant_code,
-        description,
+        merchant_name: description || merchant_code,
         api_key_encrypted: JSON.stringify(encryptedKey),
         api_secret_encrypted: JSON.stringify(encryptedSecret),
         encryption_salt: salt,
@@ -207,7 +200,7 @@ export async function POST(request: NextRequest) {
     if (insertError) {
       console.error('Merchant code creation error:', insertError)
       return NextResponse.json(
-        { error: { message: 'Failed to create merchant code' } },
+        { error: { message: 'Failed to create merchant code: ' + insertError.message } },
         { status: 500 }
       )
     }
