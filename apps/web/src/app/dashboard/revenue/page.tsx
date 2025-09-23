@@ -16,9 +16,36 @@ import {
   TrendingUp,
   Calendar,
   Users,
-  Clock
+  Clock,
+  RefreshCw
 } from 'lucide-react'
 import { LogoutButton } from '@/components/logout-button'
+import {
+  Chart as ChartJS,
+  CategoryScale,
+  LinearScale,
+  BarElement,
+  Title,
+  Tooltip,
+  Legend,
+  ArcElement,
+  PointElement,
+  LineElement
+} from 'chart.js'
+import { Bar, Doughnut, Line } from 'react-chartjs-2'
+
+// Register Chart.js components
+ChartJS.register(
+  CategoryScale,
+  LinearScale,
+  BarElement,
+  Title,
+  Tooltip,
+  Legend,
+  ArcElement,
+  PointElement,
+  LineElement
+)
 
 interface RevenueData {
   period_type: 'daily' | 'weekly' | 'monthly'
@@ -27,9 +54,30 @@ interface RevenueData {
   transaction_count: number
 }
 
+interface TransactionData {
+  id: string
+  amount: number
+  currency: string
+  transaction_date: string
+  raw_data: any
+}
+
+interface ChartData {
+  labels: string[]
+  datasets: {
+    label: string
+    data: number[]
+    backgroundColor?: string | string[]
+    borderColor?: string | string[]
+    borderWidth?: number
+  }[]
+}
+
 export default function RevenuePage() {
   const [revenueData, setRevenueData] = useState<RevenueData[]>([])
+  const [transactionData, setTransactionData] = useState<TransactionData[]>([])
   const [isLoading, setIsLoading] = useState(true)
+  const [isRefreshing, setIsRefreshing] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [selectedPeriod, setSelectedPeriod] = useState<'daily' | 'weekly' | 'monthly'>('daily')
   const supabase = createBrowserClient(
@@ -157,6 +205,156 @@ export default function RevenuePage() {
     return count > 0 ? total / count : 0
   }
 
+  const getRevenueChartData = (): ChartData => {
+    const labels = revenueData.map(item => {
+      const date = new Date(item.period_start)
+      if (selectedPeriod === 'daily') {
+        return date.toLocaleDateString('de-DE', { day: '2-digit', month: '2-digit' })
+      } else if (selectedPeriod === 'weekly') {
+        const weekEnd = new Date(date)
+        weekEnd.setDate(date.getDate() + 6)
+        return `${date.toLocaleDateString('de-DE', { day: '2-digit', month: '2-digit' })} - ${weekEnd.toLocaleDateString('de-DE', { day: '2-digit', month: '2-digit' })}`
+      } else {
+        return date.toLocaleDateString('de-DE', { month: 'long', year: 'numeric' })
+      }
+    })
+
+    return {
+      labels,
+      datasets: [
+        {
+          label: 'Revenue (€)',
+          data: revenueData.map(item => item.total_revenue),
+          backgroundColor: 'rgba(59, 130, 246, 0.5)',
+          borderColor: 'rgba(59, 130, 246, 1)',
+          borderWidth: 2
+        }
+      ]
+    }
+  }
+
+  const getTransactionChartData = (): ChartData => {
+    const labels = revenueData.map(item => {
+      const date = new Date(item.period_start)
+      if (selectedPeriod === 'daily') {
+        return date.toLocaleDateString('de-DE', { day: '2-digit', month: '2-digit' })
+      } else if (selectedPeriod === 'weekly') {
+        const weekEnd = new Date(date)
+        weekEnd.setDate(date.getDate() + 6)
+        return `${date.toLocaleDateString('de-DE', { day: '2-digit', month: '2-digit' })} - ${weekEnd.toLocaleDateString('de-DE', { day: '2-digit', month: '2-digit' })}`
+      } else {
+        return date.toLocaleDateString('de-DE', { month: 'long', year: 'numeric' })
+      }
+    })
+
+    return {
+      labels,
+      datasets: [
+        {
+          label: 'Transactions',
+          data: revenueData.map(item => item.transaction_count),
+          backgroundColor: 'rgba(16, 185, 129, 0.5)',
+          borderColor: 'rgba(16, 185, 129, 1)',
+          borderWidth: 2
+        }
+      ]
+    }
+  }
+
+  const getPaymentMethodData = (): ChartData => {
+    // Mock data for payment methods - in real implementation, this would come from transaction data
+    const paymentMethods = ['Card', 'Cash', 'Mobile', 'Other']
+    const amounts = [65, 20, 10, 5] // percentages
+
+    return {
+      labels: paymentMethods,
+      datasets: [
+        {
+          label: 'Payment Methods (%)',
+          data: amounts,
+          backgroundColor: [
+            'rgba(59, 130, 246, 0.8)',
+            'rgba(16, 185, 129, 0.8)',
+            'rgba(245, 158, 11, 0.8)',
+            'rgba(239, 68, 68, 0.8)'
+          ],
+          borderColor: [
+            'rgba(59, 130, 246, 1)',
+            'rgba(16, 185, 129, 1)',
+            'rgba(245, 158, 11, 1)',
+            'rgba(239, 68, 68, 1)'
+          ],
+          borderWidth: 2
+        }
+      ]
+    }
+  }
+
+  const handleRefresh = async () => {
+    setIsRefreshing(true)
+    await fetchRevenueData()
+    setIsRefreshing(false)
+  }
+
+  const chartOptions = {
+    responsive: true,
+    plugins: {
+      legend: {
+        position: 'top' as const,
+      },
+      title: {
+        display: true,
+        text: `Revenue Analytics - ${selectedPeriod.charAt(0).toUpperCase() + selectedPeriod.slice(1)} View`
+      }
+    },
+    scales: {
+      y: {
+        beginAtZero: true,
+        ticks: {
+          callback: function(value: any) {
+            return selectedPeriod === 'daily' || selectedPeriod === 'weekly' 
+              ? `€${value}` 
+              : `€${value}`
+          }
+        }
+      }
+    }
+  }
+
+  const transactionChartOptions = {
+    responsive: true,
+    plugins: {
+      legend: {
+        position: 'top' as const,
+      },
+      title: {
+        display: true,
+        text: `Transaction Count - ${selectedPeriod.charAt(0).toUpperCase() + selectedPeriod.slice(1)} View`
+      }
+    },
+    scales: {
+      y: {
+        beginAtZero: true,
+        ticks: {
+          stepSize: 1
+        }
+      }
+    }
+  }
+
+  const paymentMethodOptions = {
+    responsive: true,
+    plugins: {
+      legend: {
+        position: 'bottom' as const,
+      },
+      title: {
+        display: true,
+        text: 'Payment Methods Distribution'
+      }
+    }
+  }
+
   if (isLoading) {
     return (
       <div className="flex items-center justify-center h-64">
@@ -184,6 +382,15 @@ export default function RevenuePage() {
           </div>
         </div>
         <div className="flex items-center gap-2">
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={handleRefresh}
+            disabled={isRefreshing}
+          >
+            <RefreshCw className={`mr-2 h-4 w-4 ${isRefreshing ? 'animate-spin' : ''}`} />
+            Refresh
+          </Button>
           <div className="flex items-center gap-2">
             <Button
               variant={selectedPeriod === 'daily' ? 'default' : 'outline'}
@@ -312,6 +519,68 @@ export default function RevenuePage() {
               <p className="text-sm">Data will appear here once transactions are processed.</p>
             </div>
           )}
+        </CardContent>
+      </Card>
+
+      {/* Charts Section */}
+      <div className="grid gap-6 md:grid-cols-2">
+        {/* Revenue Chart */}
+        <Card>
+          <CardHeader>
+            <CardTitle>Revenue Trend</CardTitle>
+            <CardDescription>
+              Revenue over time for the selected period
+            </CardDescription>
+          </CardHeader>
+          <CardContent>
+            <div className="h-80">
+              {revenueData.length > 0 ? (
+                <Bar data={getRevenueChartData()} options={chartOptions} />
+              ) : (
+                <div className="flex items-center justify-center h-full text-muted-foreground">
+                  No data available
+                </div>
+              )}
+            </div>
+          </CardContent>
+        </Card>
+
+        {/* Transaction Count Chart */}
+        <Card>
+          <CardHeader>
+            <CardTitle>Transaction Count</CardTitle>
+            <CardDescription>
+              Number of transactions over time
+            </CardDescription>
+          </CardHeader>
+          <CardContent>
+            <div className="h-80">
+              {revenueData.length > 0 ? (
+                <Line data={getTransactionChartData()} options={transactionChartOptions} />
+              ) : (
+                <div className="flex items-center justify-center h-full text-muted-foreground">
+                  No data available
+                </div>
+              )}
+            </div>
+          </CardContent>
+        </Card>
+      </div>
+
+      {/* Payment Methods Chart */}
+      <Card>
+        <CardHeader>
+          <CardTitle>Payment Methods Distribution</CardTitle>
+          <CardDescription>
+            Breakdown of payment methods used by customers
+          </CardDescription>
+        </CardHeader>
+        <CardContent>
+          <div className="h-80 flex items-center justify-center">
+            <div className="w-80 h-80">
+              <Doughnut data={getPaymentMethodData()} options={paymentMethodOptions} />
+            </div>
+          </div>
         </CardContent>
       </Card>
     </div>

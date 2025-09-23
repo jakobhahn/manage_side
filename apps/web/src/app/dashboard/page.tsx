@@ -13,7 +13,8 @@ import {
   Clock,
   ShoppingCart,
   BarChart3,
-  Settings
+  Settings,
+  CreditCard
 } from 'lucide-react'
 import Link from 'next/link'
 import { LogoutButton } from '@/components/logout-button'
@@ -223,6 +224,13 @@ export default function DashboardPage() {
           description: "Track stock levels and suppliers",
           icon: ShoppingCart,
           href: "/dashboard/inventory",
+          variant: "outline" as const
+        },
+        {
+          title: "SumUp Integration",
+          description: "Sync payment data and manage merchant accounts",
+          icon: CreditCard,
+          href: "/dashboard/sumup",
           variant: "outline" as const
         }
       )
