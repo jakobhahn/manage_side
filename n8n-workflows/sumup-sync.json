@@ -1,0 +1,314 @@
+{
+  "name": "SumUp Transaction Sync",
+  "nodes": [
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "cronExpression",
+              "value": "0 * * * *"
+            }
+          ]
+        }
+      },
+      "id": "cron-trigger",
+      "name": "Hourly Trigger",
+      "type": "n8n-nodes-base.cron",
+      "typeVersion": 1,
+      "position": [240, 300]
+    },
+    {
+      "parameters": {
+        "url": "https://api.sumup.com/v0.1/me/merchants",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "sumupApi",
+        "options": {}
+      },
+      "id": "get-merchants",
+      "name": "Get Merchants",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.1,
+      "position": [460, 300]
+    },
+    {
+      "parameters": {
+        "url": "={{ $json.url }}",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "sumupApi",
+        "options": {}
+      },
+      "id": "get-merchant-details",
+      "name": "Get Merchant Details",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.1,
+      "position": [680, 300]
+    },
+    {
+      "parameters": {
+        "url": "https://api.sumup.com/v0.1/me/transactions",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "sumupApi",
+        "options": {
+          "qs": {
+            "merchant_code": "={{ $json.merchant_code }}",
+            "start_date": "={{ $now.minus({ hours: 1 }).toISO() }}",
+            "end_date": "={{ $now.toISO() }}",
+            "limit": 1000
+          }
+        }
+      },
+      "id": "get-transactions",
+      "name": "Get Transactions",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.1,
+      "position": [900, 300]
+    },
+    {
+      "parameters": {
+        "url": "https://your-supabase-url.supabase.co/rest/v1/merchant_codes",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "supabaseApi",
+        "options": {
+          "headers": {
+            "Prefer": "return=representation"
+          }
+        }
+      },
+      "id": "get-org-merchants",
+      "name": "Get Organization Merchants",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.1,
+      "position": [460, 500]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Process transactions and match with organizations\nconst transactions = $input.all();\nconst orgMerchants = $('Get Organization Merchants').all();\n\n// Create a map of merchant codes to organization IDs\nconst merchantToOrg = {};\norgMerchants.forEach(org => {\n  if (org.json.sumup_merchant_code) {\n    merchantToOrg[org.json.sumup_merchant_code] = {\n      organization_id: org.json.organization_id,\n      merchant_code_id: org.json.id\n    };\n  }\n});\n\n// Process each transaction\nconst processedTransactions = [];\n\ntransactions.forEach(transaction => {\n  const merchantCode = transaction.json.merchant_code;\n  const orgData = merchantToOrg[merchantCode];\n  \n  if (orgData) {\n    processedTransactions.push({\n      organization_id: orgData.organization_id,\n      merchant_code_id: orgData.merchant_code_id,\n      sumup_transaction_id: transaction.json.id,\n      amount: parseFloat(transaction.json.amount),\n      currency: transaction.json.currency || 'EUR',\n      payment_method: transaction.json.payment_method,\n      status: transaction.json.status,\n      transaction_date: transaction.json.timestamp,\n      customer_email: transaction.json.customer_email,\n      customer_name: transaction.json.customer_name,\n      location_id: transaction.json.location_id,\n      device_id: transaction.json.device_id,\n      raw_data: transaction.json\n    });\n  }\n});\n\nreturn processedTransactions.map(t => ({ json: t }));"
+      },
+      "id": "process-transactions",
+      "name": "Process Transactions",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1120, 300]
+    },
+    {
+      "parameters": {
+        "url": "https://your-supabase-url.supabase.co/rest/v1/payment_transactions",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "supabaseApi",
+        "options": {
+          "headers": {
+            "Prefer": "resolution=merge-duplicates"
+          }
+        },
+        "sendBody": true,
+        "bodyParameters": {
+          "parameters": [
+            {
+              "name": "organization_id",
+              "value": "={{ $json.organization_id }}"
+            },
+            {
+              "name": "merchant_code_id",
+              "value": "={{ $json.merchant_code_id }}"
+            },
+            {
+              "name": "sumup_transaction_id",
+              "value": "={{ $json.sumup_transaction_id }}"
+            },
+            {
+              "name": "amount",
+              "value": "={{ $json.amount }}"
+            },
+            {
+              "name": "currency",
+              "value": "={{ $json.currency }}"
+            },
+            {
+              "name": "payment_method",
+              "value": "={{ $json.payment_method }}"
+            },
+            {
+              "name": "status",
+              "value": "={{ $json.status }}"
+            },
+            {
+              "name": "transaction_date",
+              "value": "={{ $json.transaction_date }}"
+            },
+            {
+              "name": "customer_email",
+              "value": "={{ $json.customer_email }}"
+            },
+            {
+              "name": "customer_name",
+              "value": "={{ $json.customer_name }}"
+            },
+            {
+              "name": "location_id",
+              "value": "={{ $json.location_id }}"
+            },
+            {
+              "name": "device_id",
+              "value": "={{ $json.device_id }}"
+            },
+            {
+              "name": "raw_data",
+              "value": "={{ $json.raw_data }}"
+            }
+          ]
+        }
+      },
+      "id": "upsert-transactions",
+      "name": "Upsert Transactions",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.1,
+      "position": [1340, 300]
+    },
+    {
+      "parameters": {
+        "url": "https://your-supabase-url.supabase.co/rest/v1/rpc/update_revenue_analytics",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "supabaseApi",
+        "options": {
+          "headers": {
+            "Content-Type": "application/json"
+          }
+        },
+        "sendBody": true,
+        "bodyParameters": {
+          "parameters": [
+            {
+              "name": "org_id",
+              "value": "={{ $json.organization_id }}"
+            }
+          ]
+        }
+      },
+      "id": "update-analytics",
+      "name": "Update Revenue Analytics",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.1,
+      "position": [1560, 300]
+    },
+    {
+      "parameters": {
+        "url": "https://your-supabase-url.supabase.co/rest/v1/merchant_codes",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "supabaseApi",
+        "options": {
+          "headers": {
+            "Prefer": "return=representation"
+          }
+        },
+        "sendBody": true,
+        "bodyParameters": {
+          "parameters": [
+            {
+              "name": "last_sync_at",
+              "value": "={{ $now.toISO() }}"
+            }
+          ]
+        }
+      },
+      "id": "update-sync-time",
+      "name": "Update Sync Time",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.1,
+      "position": [1780, 300]
+    }
+  ],
+  "connections": {
+    "Hourly Trigger": {
+      "main": [
+        [
+          {
+            "node": "Get Merchants",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Get Organization Merchants",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Get Merchants": {
+      "main": [
+        [
+          {
+            "node": "Get Merchant Details",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Get Merchant Details": {
+      "main": [
+        [
+          {
+            "node": "Get Transactions",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Get Transactions": {
+      "main": [
+        [
+          {
+            "node": "Process Transactions",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Process Transactions": {
+      "main": [
+        [
+          {
+            "node": "Upsert Transactions",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Upsert Transactions": {
+      "main": [
+        [
+          {
+            "node": "Update Revenue Analytics",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Update Revenue Analytics": {
+      "main": [
+        [
+          {
+            "node": "Update Sync Time",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "pinData": {},
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "staticData": null,
+  "tags": [],
+  "triggerCount": 1,
+  "updatedAt": "2024-01-22T10:00:00.000Z",
+  "versionId": "1"
+}
