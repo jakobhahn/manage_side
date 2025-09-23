@@ -148,6 +148,12 @@ export default function SumUpPage() {
         throw new Error(`HTTP ${response.status}: ${response.statusText}`)
       }
       
+      // Check if response is JSON
+      const contentType = response.headers.get('content-type')
+      if (!contentType || !contentType.includes('application/json')) {
+        throw new Error('Invalid response format - expected JSON')
+      }
+      
       const data = await response.json()
       
       if (data.error) {
@@ -201,6 +207,12 @@ export default function SumUpPage() {
         throw new Error(`HTTP ${response.status}: ${response.statusText}`)
       }
       
+      // Check if response is JSON
+      const contentType = response.headers.get('content-type')
+      if (!contentType || !contentType.includes('application/json')) {
+        throw new Error('Invalid response format - expected JSON')
+      }
+      
       const data = await response.json()
       
       if (data.error) {
@@ -250,6 +262,20 @@ export default function SumUpPage() {
         },
         body: JSON.stringify(createFormData),
       })
+      
+      if (!response.ok) {
+        if (response.status === 401) {
+          router.push('/login')
+          return
+        }
+        throw new Error(`HTTP ${response.status}: ${response.statusText}`)
+      }
+      
+      // Check if response is JSON
+      const contentType = response.headers.get('content-type')
+      if (!contentType || !contentType.includes('application/json')) {
+        throw new Error('Invalid response format - expected JSON')
+      }
       
       const data = await response.json()
       
