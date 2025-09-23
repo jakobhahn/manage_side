@@ -1,0 +1,139 @@
+# Features
+
+This document outlines the current features and functionality of the Hans Restaurant App.
+
+## Current Implementation Status
+
+### ✅ Completed Features
+
+#### Authentication & User Management
+- **Multi-tenant Architecture**: Row-Level Security (RLS) with Supabase
+- **Role-based Access Control**: Owner, Manager, Staff roles
+- **Organization Registration**: Admin can create new restaurant organizations
+- **User Management**: Admins can create and manage team members
+- **Session Management**: Secure login/logout with session tracking
+- **Last Login Tracking**: User activity monitoring
+
+#### User Interface
+- **Responsive Design**: Mobile-first approach with Tailwind CSS
+- **Role-based Navigation**: Different UI based on user role
+- **Dashboard**: Personalized dashboard for each role
+- **User Management Page**: Complete CRUD operations for team members
+- **Logout Functionality**: Secure session termination
+
+#### Database & Backend
+- **Supabase Integration**: PostgreSQL with RLS policies
+- **API Routes**: RESTful endpoints for all operations
+- **Database Migrations**: Version-controlled schema changes
+- **Revenue Analytics Function**: Automated data aggregation
+- **Organization Creation Function**: Streamlined tenant setup
+
+### 🚧 In Progress Features
+
+#### Shift Planning Module
+- **Basic UI**: Staff can access shift planning page
+- **Role Restrictions**: Only staff see shift planning in navigation
+
+### 📋 Planned Features
+
+#### Core Modules (Phase 2)
+- **Revenue Analytics**: Detailed financial reporting
+- **Time Clock**: Employee time tracking with GPS
+- **Sales Management**: Customer and order management
+
+#### Advanced Modules (Phase 3)
+- **Inventory Management**: Stock tracking and supplier management
+- **KPI Dashboard**: Customizable performance metrics
+- **Reporting**: Comprehensive business reports
+
+#### Platform Features (Phase 4)
+- **Menu Management**: Digital menu creation and management
+- **Subscription Management**: Module-based billing
+- **Advanced Analytics**: Machine learning insights
+
+## User Roles & Permissions
+
+### Owner
+- Full access to all features
+- Organization management
+- User creation and management
+- Subscription management
+- All analytics and reports
+
+### Manager
+- User management (create/edit staff)
+- Access to most operational modules
+- Limited organization settings
+- Analytics and reporting access
+
+### Staff
+- Limited to shift planning
+- Personal time tracking
+- Basic operational tasks
+- No administrative access
+
+## Technical Architecture
+
+### Frontend
+- **Next.js 15**: App Router with Server Components
+- **React 19**: Latest React features
+- **TypeScript**: Strict type checking
+- **Tailwind CSS**: Utility-first styling
+- **shadcn/ui**: Component library
+- **Supabase SSR**: Server-side rendering integration
+
+### Backend
+- **Supabase**: Database, Auth, Storage, Edge Functions
+- **PostgreSQL**: Multi-tenant database with RLS
+- **API Routes**: Next.js API endpoints
+- **Database Functions**: Automated data processing
+
+### Development
+- **Turborepo**: Monorepo management
+- **pnpm**: Package manager
+- **ESLint + Prettier**: Code quality
+- **TypeScript**: Type safety
+- **Git**: Version control
+
+## Security Features
+
+### Row-Level Security (RLS)
+- Tenant isolation at database level
+- Automatic data filtering by organization
+- Secure multi-tenant architecture
+
+### Authentication
+- Supabase Auth integration
+- JWT token management
+- Session-based access control
+- Role-based permissions
+
+### API Security
+- Authorization headers required
+- Token validation on all endpoints
+- Organization-based access control
+- Input validation and sanitization
+
+## Getting Started
+
+### For Developers
+1. Follow the [Getting Started Guide](/getting-started)
+2. Set up local Supabase environment
+3. Run database migrations
+4. Start development server
+
+### For Restaurant Owners
+1. Visit the [Registration Page](/register)
+2. Create your organization
+3. Add team members
+4. Start using the platform
+
+## Support
+
+- **Documentation**: Comprehensive guides and API docs
+- **GitHub Issues**: Bug reports and feature requests
+- **Community**: GitHub Discussions for questions
+
+---
+
+*Last updated: 2025-01-22*

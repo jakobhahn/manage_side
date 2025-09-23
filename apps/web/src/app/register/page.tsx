@@ -88,7 +88,7 @@ export default function RegisterPage() {
 
     try {
       // First, sign up the user with Supabase Auth
-      const { data: authData, error: authError } = await fetch('/api/auth/signup', {
+      const authResponse = await fetch('/api/auth/signup', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -98,14 +98,16 @@ export default function RegisterPage() {
           password: formData.password,
           name: formData.ownerName,
         }),
-      }).then(res => res.json())
+      })
 
-      if (authError) {
-        throw new Error(authError.message)
+      const authData = await authResponse.json()
+
+      if (!authResponse.ok) {
+        throw new Error(authData.error || 'Failed to create user account')
       }
 
       // Then create the organization
-      const { data: orgData, error: orgError } = await fetch('/api/organizations', {
+      const orgResponse = await fetch('/api/organizations', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -117,10 +119,12 @@ export default function RegisterPage() {
           ownerName: formData.ownerName,
           ownerEmail: formData.ownerEmail,
         }),
-      }).then(res => res.json())
+      })
 
-      if (orgError) {
-        throw new Error(orgError.message)
+      const orgData = await orgResponse.json()
+
+      if (!orgResponse.ok) {
+        throw new Error(orgData.error || 'Failed to create organization')
       }
 
       // Redirect to dashboard

@@ -1,27 +1,27 @@
--- Enable necessary extensions
+-- Enable required extensions
 CREATE EXTENSION IF NOT EXISTS "uuid-ossp";
 CREATE EXTENSION IF NOT EXISTS "pgcrypto";
 
 -- Create custom types
-CREATE TYPE user_role AS ENUM ('owner', 'manager', 'staff', 'admin');
-CREATE TYPE subscription_tier AS ENUM ('free', 'basic', 'pro', 'enterprise');
+CREATE TYPE user_role AS ENUM ('owner', 'manager', 'staff');
+CREATE TYPE subscription_tier AS ENUM ('free', 'basic', 'premium', 'enterprise');
 CREATE TYPE module_name AS ENUM (
-  'revenue_analytics', 
+  'revenue_analytics',
   'shift_planning', 
   'inventory_management',
-  'time_clock', 
-  'sales_management', 
+  'time_clock',
+  'sales_management',
   'kpi_dashboard',
-  'reporting', 
+  'reporting',
   'menu_management'
 );
 
--- Organizations table (Tenants)
-CREATE TABLE organizations (
-  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+-- Organizations table
+CREATE TABLE public.organizations (
+  id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
   name VARCHAR(255) NOT NULL,
   slug VARCHAR(100) UNIQUE NOT NULL,
-  settings JSONB DEFAULT '{}',
+  description TEXT,
   subscription_tier subscription_tier DEFAULT 'free',
   billing_email VARCHAR(255),
   timezone VARCHAR(50) DEFAULT 'Europe/Berlin',
@@ -32,221 +32,183 @@ CREATE TABLE organizations (
   updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
 );
 
--- Merchant codes for SumUp integration per organization
-CREATE TABLE merchant_codes (
-  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-  organization_id UUID REFERENCES organizations(id) ON DELETE CASCADE,
-  sumup_merchant_code VARCHAR(255) NOT NULL,
-  sumup_access_token TEXT,
-  is_active BOOLEAN DEFAULT true,
-  last_sync_at TIMESTAMP WITH TIME ZONE,
-  created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
-  updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
-  UNIQUE(organization_id, sumup_merchant_code)
-);
-
--- Users table (Staff members)
-CREATE TABLE users (
-  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-  organization_id UUID REFERENCES organizations(id) ON DELETE CASCADE,
-  email VARCHAR(255) UNIQUE NOT NULL,
+-- Users table
+CREATE TABLE public.users (
+  id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  auth_id UUID UNIQUE NOT NULL,
+  organization_id UUID REFERENCES public.organizations(id) ON DELETE CASCADE,
   name VARCHAR(255) NOT NULL,
-  role user_role NOT NULL,
-  permissions JSONB DEFAULT '[]',
+  email VARCHAR(255) UNIQUE NOT NULL,
+  role user_role NOT NULL DEFAULT 'staff',
   is_active BOOLEAN DEFAULT true,
-  last_login_at TIMESTAMP WITH TIME ZONE,
+  last_login TIMESTAMP WITH TIME ZONE,
   created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
   updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
 );
 
--- Module subscriptions per organization
-CREATE TABLE module_subscriptions (
-  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-  organization_id UUID REFERENCES organizations(id) ON DELETE CASCADE,
+-- Merchant codes table (for SumUp integration)
+CREATE TABLE public.merchant_codes (
+  id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  organization_id UUID REFERENCES public.organizations(id) ON DELETE CASCADE,
+  merchant_code VARCHAR(100) NOT NULL,
+  merchant_name VARCHAR(255),
+  is_active BOOLEAN DEFAULT true,
+  created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+  updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+  UNIQUE(organization_id, merchant_code)
+);
+
+-- Module subscriptions table
+CREATE TABLE public.module_subscriptions (
+  id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  organization_id UUID REFERENCES public.organizations(id) ON DELETE CASCADE,
   module_name module_name NOT NULL,
   is_active BOOLEAN DEFAULT true,
-  subscription_tier subscription_tier DEFAULT 'basic',
-  features JSONB DEFAULT '{}',
+  subscribed_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
   expires_at TIMESTAMP WITH TIME ZONE,
   created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
   updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
   UNIQUE(organization_id, module_name)
 );
 
--- Payment transactions from SumUp
-CREATE TABLE payment_transactions (
-  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-  organization_id UUID REFERENCES organizations(id) ON DELETE CASCADE,
-  merchant_code_id UUID REFERENCES merchant_codes(id) ON DELETE SET NULL,
-  sumup_transaction_id VARCHAR(255) UNIQUE,
+-- Payment transactions table (from SumUp)
+CREATE TABLE public.payment_transactions (
+  id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  organization_id UUID REFERENCES public.organizations(id) ON DELETE CASCADE,
+  transaction_id VARCHAR(255) NOT NULL,
   amount DECIMAL(10,2) NOT NULL,
-  currency VARCHAR(3) DEFAULT 'EUR',
-  payment_method VARCHAR(50) NOT NULL,
+  currency VARCHAR(3) NOT NULL DEFAULT 'EUR',
   status VARCHAR(50) NOT NULL,
   transaction_date TIMESTAMP WITH TIME ZONE NOT NULL,
-  customer_email VARCHAR(255),
-  customer_name VARCHAR(255),
-  location_id VARCHAR(100),
-  device_id VARCHAR(100),
+  merchant_code VARCHAR(100),
   raw_data JSONB,
-  processed_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
-  created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+  created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+  updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+  UNIQUE(organization_id, transaction_id)
 );
 
--- Create indexes for performance
-CREATE INDEX idx_organizations_slug ON organizations(slug);
-CREATE INDEX idx_organizations_active ON organizations(is_active);
+-- Revenue analytics table (aggregated data)
+CREATE TABLE public.revenue_analytics (
+  id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  organization_id UUID REFERENCES public.organizations(id) ON DELETE CASCADE,
+  period_type VARCHAR(20) NOT NULL, -- 'daily', 'weekly', 'monthly'
+  period_start DATE NOT NULL,
+  total_revenue DECIMAL(12,2) NOT NULL DEFAULT 0,
+  transaction_count BIGINT NOT NULL DEFAULT 0,
+  created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+  updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+  UNIQUE(organization_id, period_type, period_start)
+);
 
-CREATE INDEX idx_merchant_codes_org_id ON merchant_codes(organization_id);
-CREATE INDEX idx_merchant_codes_active ON merchant_codes(is_active);
+-- Enable Row Level Security
+ALTER TABLE public.organizations ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.users ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.merchant_codes ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.module_subscriptions ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.payment_transactions ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.revenue_analytics ENABLE ROW LEVEL SECURITY;
 
-CREATE INDEX idx_users_organization_id ON users(organization_id);
-CREATE INDEX idx_users_email ON users(email);
-CREATE INDEX idx_users_role ON users(role);
-
-CREATE INDEX idx_module_subscriptions_org_id ON module_subscriptions(organization_id);
-CREATE INDEX idx_module_subscriptions_active ON module_subscriptions(is_active);
-
-CREATE INDEX idx_payment_transactions_org_id ON payment_transactions(organization_id);
-CREATE INDEX idx_payment_transactions_date ON payment_transactions(transaction_date);
-CREATE INDEX idx_payment_transactions_sumup_id ON payment_transactions(sumup_transaction_id);
-CREATE INDEX idx_payment_transactions_status ON payment_transactions(status);
-CREATE INDEX idx_payment_transactions_merchant_code ON payment_transactions(merchant_code_id);
-
--- Enable Row Level Security on all tables
-ALTER TABLE organizations ENABLE ROW LEVEL SECURITY;
-ALTER TABLE merchant_codes ENABLE ROW LEVEL SECURITY;
-ALTER TABLE users ENABLE ROW LEVEL SECURITY;
-ALTER TABLE module_subscriptions ENABLE ROW LEVEL SECURITY;
-ALTER TABLE payment_transactions ENABLE ROW LEVEL SECURITY;
-
--- RLS Policies for organizations
-CREATE POLICY "Users can view their organization" ON organizations
-  FOR SELECT USING (id = auth.jwt() ->> 'organization_id'::text);
-
-CREATE POLICY "Owners can update their organization" ON organizations
+-- RLS Policies for organizations table
+CREATE POLICY "Organizations are viewable by their members." ON public.organizations
+  FOR SELECT USING (
+    id = (SELECT organization_id FROM public.users WHERE auth_id = auth.uid() LIMIT 1)
+  );
+CREATE POLICY "Organization owners can insert organizations." ON public.organizations
+  FOR INSERT WITH CHECK (
+    EXISTS (SELECT 1 FROM public.users WHERE auth_id = auth.uid() AND role = 'owner')
+  );
+CREATE POLICY "Organization owners can update organizations." ON public.organizations
   FOR UPDATE USING (
-    id = auth.jwt() ->> 'organization_id'::text AND
-    EXISTS (
-      SELECT 1 FROM users 
-      WHERE users.organization_id = organizations.id 
-      AND users.id = auth.jwt() ->> 'user_id'::text 
-      AND users.role = 'owner'
-    )
+    id = (SELECT organization_id FROM public.users WHERE auth_id = auth.uid() AND role = 'owner' LIMIT 1)
+  );
+CREATE POLICY "Organization owners can delete organizations." ON public.organizations
+  FOR DELETE USING (
+    id = (SELECT organization_id FROM public.users WHERE auth_id = auth.uid() AND role = 'owner' LIMIT 1)
   );
 
--- RLS Policies for merchant_codes
-CREATE POLICY "Users can view organization merchant codes" ON merchant_codes
-  FOR SELECT USING (organization_id = auth.jwt() ->> 'organization_id'::text);
-
-CREATE POLICY "Owners can manage merchant codes" ON merchant_codes
-  FOR ALL USING (
-    organization_id = auth.jwt() ->> 'organization_id'::text AND
-    EXISTS (
-      SELECT 1 FROM users 
-      WHERE users.organization_id = merchant_codes.organization_id 
-      AND users.id = auth.jwt() ->> 'user_id'::text 
-      AND users.role = 'owner'
-    )
+-- RLS Policies for users table
+CREATE POLICY "Users can view their own organization's users." ON public.users
+  FOR SELECT USING (
+    organization_id = (SELECT organization_id FROM public.users WHERE auth_id = auth.uid() LIMIT 1)
+  );
+CREATE POLICY "Organization owners/managers can insert users." ON public.users
+  FOR INSERT WITH CHECK (
+    organization_id = (SELECT organization_id FROM public.users WHERE auth_id = auth.uid() AND (role = 'owner' OR role = 'manager') LIMIT 1)
+  );
+CREATE POLICY "Organization owners/managers can update users." ON public.users
+  FOR UPDATE USING (
+    organization_id = (SELECT organization_id FROM public.users WHERE auth_id = auth.uid() AND (role = 'owner' OR role = 'manager') LIMIT 1)
+  );
+CREATE POLICY "Organization owners/managers can delete users." ON public.users
+  FOR DELETE USING (
+    organization_id = (SELECT organization_id FROM public.users WHERE auth_id = auth.uid() AND (role = 'owner' OR role = 'manager') LIMIT 1)
   );
 
--- RLS Policies for users
-CREATE POLICY "Users can view organization members" ON users
-  FOR SELECT USING (organization_id = auth.jwt() ->> 'organization_id'::text);
-
-CREATE POLICY "Owners and managers can manage users" ON users
-  FOR ALL USING (
-    organization_id = auth.jwt() ->> 'organization_id'::text AND
-    EXISTS (
-      SELECT 1 FROM users u
-      WHERE u.organization_id = users.organization_id 
-      AND u.id = auth.jwt() ->> 'user_id'::text 
-      AND u.role IN ('owner', 'manager')
-    )
+-- RLS Policies for merchant_codes table
+CREATE POLICY "Merchant codes are viewable by their organization members." ON public.merchant_codes
+  FOR SELECT USING (
+    organization_id = (SELECT organization_id FROM public.users WHERE auth_id = auth.uid() LIMIT 1)
+  );
+CREATE POLICY "Organization owners/managers can insert merchant codes." ON public.merchant_codes
+  FOR INSERT WITH CHECK (
+    organization_id = (SELECT organization_id FROM public.users WHERE auth_id = auth.uid() AND (role = 'owner' OR role = 'manager') LIMIT 1)
+  );
+CREATE POLICY "Organization owners/managers can update merchant codes." ON public.merchant_codes
+  FOR UPDATE USING (
+    organization_id = (SELECT organization_id FROM public.users WHERE auth_id = auth.uid() AND (role = 'owner' OR role = 'manager') LIMIT 1)
+  );
+CREATE POLICY "Organization owners/managers can delete merchant codes." ON public.merchant_codes
+  FOR DELETE USING (
+    organization_id = (SELECT organization_id FROM public.users WHERE auth_id = auth.uid() AND (role = 'owner' OR role = 'manager') LIMIT 1)
   );
 
--- RLS Policies for module_subscriptions
-CREATE POLICY "Users can view organization subscriptions" ON module_subscriptions
-  FOR SELECT USING (organization_id = auth.jwt() ->> 'organization_id'::text);
-
-CREATE POLICY "Owners can manage subscriptions" ON module_subscriptions
-  FOR ALL USING (
-    organization_id = auth.jwt() ->> 'organization_id'::text AND
-    EXISTS (
-      SELECT 1 FROM users 
-      WHERE users.organization_id = module_subscriptions.organization_id 
-      AND users.id = auth.jwt() ->> 'user_id'::text 
-      AND users.role = 'owner'
-    )
+-- RLS Policies for payment_transactions table
+CREATE POLICY "Payment transactions are viewable by their organization members." ON public.payment_transactions
+  FOR SELECT USING (
+    organization_id = (SELECT organization_id FROM public.users WHERE auth_id = auth.uid() LIMIT 1)
+  );
+-- Allow n8n to insert transactions (via service role or specific function)
+-- For now, we'll allow authenticated users to insert, but this should be restricted to n8n/backend service
+CREATE POLICY "Authenticated users can insert payment transactions for their organization." ON public.payment_transactions
+  FOR INSERT WITH CHECK (
+    organization_id = (SELECT organization_id FROM public.users WHERE auth_id = auth.uid() LIMIT 1)
   );
 
--- RLS Policies for payment_transactions
-CREATE POLICY "Users can view organization transactions" ON payment_transactions
-  FOR SELECT USING (organization_id = auth.jwt() ->> 'organization_id'::text);
+-- RLS Policies for revenue_analytics table
+CREATE POLICY "Revenue analytics are viewable by their organization members." ON public.revenue_analytics
+  FOR SELECT USING (
+    organization_id = (SELECT organization_id FROM public.users WHERE auth_id = auth.uid() LIMIT 1)
+  );
+-- Allow the update_revenue_analytics function to insert/update
+CREATE POLICY "Revenue analytics can be inserted/updated by the revenue analytics function." ON public.revenue_analytics
+  FOR INSERT WITH CHECK (true); -- This will be refined with a specific function role later
+CREATE POLICY "Revenue analytics can be updated by the revenue analytics function." ON public.revenue_analytics
+  FOR UPDATE USING (true); -- This will be refined with a specific function role later
 
--- Create functions for updating timestamps
-CREATE OR REPLACE FUNCTION update_updated_at_column()
-RETURNS TRIGGER AS $$
-BEGIN
-    NEW.updated_at = NOW();
-    RETURN NEW;
-END;
-$$ language 'plpgsql';
+-- RLS Policies for module_subscriptions table
+CREATE POLICY "Module subscriptions are viewable by their organization members." ON public.module_subscriptions
+  FOR SELECT USING (
+    organization_id = (SELECT organization_id FROM public.users WHERE auth_id = auth.uid() LIMIT 1)
+  );
+CREATE POLICY "Organization owners can insert module subscriptions." ON public.module_subscriptions
+  FOR INSERT WITH CHECK (
+    organization_id = (SELECT organization_id FROM public.users WHERE auth_id = auth.uid() AND role = 'owner' LIMIT 1)
+  );
+CREATE POLICY "Organization owners can update module subscriptions." ON public.module_subscriptions
+  FOR UPDATE USING (
+    organization_id = (SELECT organization_id FROM public.users WHERE auth_id = auth.uid() AND role = 'owner' LIMIT 1)
+  );
+CREATE POLICY "Organization owners can delete module subscriptions." ON public.module_subscriptions
+  FOR DELETE USING (
+    organization_id = (SELECT organization_id FROM public.users WHERE auth_id = auth.uid() AND role = 'owner' LIMIT 1)
+  );
 
--- Create triggers for updated_at
-CREATE TRIGGER update_organizations_updated_at 
-  BEFORE UPDATE ON organizations
-  FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
-
-CREATE TRIGGER update_merchant_codes_updated_at 
-  BEFORE UPDATE ON merchant_codes
-  FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
-
-CREATE TRIGGER update_users_updated_at 
-  BEFORE UPDATE ON users
-  FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
-
-CREATE TRIGGER update_module_subscriptions_updated_at 
-  BEFORE UPDATE ON module_subscriptions
-  FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
-
--- Function to create organization with owner
-CREATE OR REPLACE FUNCTION create_organization_with_owner(
-  org_name TEXT,
-  org_slug TEXT,
-  owner_email TEXT,
-  owner_name TEXT
-)
-RETURNS UUID AS $$
-DECLARE
-  org_id UUID;
-  user_id UUID;
-BEGIN
-  -- Create organization
-  INSERT INTO organizations (name, slug)
-  VALUES (org_name, org_slug)
-  RETURNING id INTO org_id;
-  
-  -- Create owner user
-  INSERT INTO users (organization_id, email, name, role)
-  VALUES (org_id, owner_email, owner_name, 'owner')
-  RETURNING id INTO user_id;
-  
-  -- Enable basic modules for new organization
-  INSERT INTO module_subscriptions (organization_id, module_name, subscription_tier)
-  SELECT org_id, module_name, 'basic'
-  FROM unnest(ARRAY[
-    'revenue_analytics'::module_name,
-    'time_clock'::module_name,
-    'sales_management'::module_name
-  ]) AS module_name;
-  
-  RETURN org_id;
-END;
-$$ LANGUAGE plpgsql SECURITY DEFINER;
-
--- Grant necessary permissions
-GRANT USAGE ON SCHEMA public TO authenticated;
-GRANT ALL ON ALL TABLES IN SCHEMA public TO authenticated;
-GRANT ALL ON ALL SEQUENCES IN SCHEMA public TO authenticated;
-GRANT EXECUTE ON FUNCTION create_organization_with_owner TO authenticated;
+-- Create indexes for better performance
+CREATE INDEX idx_users_auth_id ON public.users(auth_id);
+CREATE INDEX idx_users_organization_id ON public.users(organization_id);
+CREATE INDEX idx_merchant_codes_organization_id ON public.merchant_codes(organization_id);
+CREATE INDEX idx_module_subscriptions_organization_id ON public.module_subscriptions(organization_id);
+CREATE INDEX idx_payment_transactions_organization_id ON public.payment_transactions(organization_id);
+CREATE INDEX idx_payment_transactions_transaction_date ON public.payment_transactions(transaction_date);
+CREATE INDEX idx_revenue_analytics_organization_id ON public.revenue_analytics(organization_id);
+CREATE INDEX idx_revenue_analytics_period ON public.revenue_analytics(organization_id, period_type, period_start);

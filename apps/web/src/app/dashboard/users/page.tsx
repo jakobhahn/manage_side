@@ -1,6 +1,9 @@
 'use client'
 
 import { useState, useEffect } from 'react'
+import { createBrowserClient } from '@supabase/ssr'
+import { useRouter } from 'next/navigation'
+import Link from 'next/link'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -16,7 +19,8 @@ import {
   Shield, 
   MoreHorizontal,
   Edit,
-  Trash2
+  Trash2,
+  ArrowLeft
 } from 'lucide-react'
 import {
   DropdownMenu,
@@ -24,6 +28,7 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu'
+import { LogoutButton } from '@/components/logout-button'
 
 interface User {
   id: string
@@ -31,7 +36,7 @@ interface User {
   name: string
   role: 'owner' | 'manager' | 'staff' | 'admin'
   is_active: boolean
-  last_login_at: string | null
+  last_login: string | null
   created_at: string
 }
 
@@ -48,6 +53,12 @@ export default function UsersPage() {
   const [isCreating, setIsCreating] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [showCreateForm, setShowCreateForm] = useState(false)
+  const [isAuthenticated, setIsAuthenticated] = useState(false)
+  const supabase = createBrowserClient(
+    process.env.NEXT_PUBLIC_SUPABASE_URL!,
+    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
+  )
+  const router = useRouter()
   const [createFormData, setCreateFormData] = useState<CreateUserData>({
     name: '',
     email: '',
@@ -56,20 +67,53 @@ export default function UsersPage() {
   })
 
   useEffect(() => {
-    fetchUsers()
+    checkAuthAndFetchUsers()
   }, [])
+
+  const checkAuthAndFetchUsers = async () => {
+    try {
+      setIsLoading(true)
+      
+      // Check if user is authenticated
+      const { data: { user: authUser } } = await supabase.auth.getUser()
+      
+      if (!authUser) {
+        router.push('/login')
+        return
+      }
+      
+      setIsAuthenticated(true)
+      await fetchUsers()
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Authentication failed')
+      setIsLoading(false)
+    }
+  }
 
   const fetchUsers = async () => {
     try {
-      setIsLoading(true)
-      const response = await fetch('/api/users')
+      // Get the current session to include auth headers
+      const { data: { session } } = await supabase.auth.getSession()
+      
+      if (!session) {
+        throw new Error('No active session')
+      }
+
+      const response = await fetch('/api/users', {
+        headers: {
+          'Authorization': `Bearer ${session.access_token}`,
+          'Content-Type': 'application/json',
+        },
+      })
+      
       const data = await response.json()
       
       if (data.error) {
-        throw new Error(data.error.message)
+        throw new Error(data.error.message || data.error)
       }
       
-      setUsers(data.data)
+      // Ensure data is an array
+      setUsers(Array.isArray(data) ? data : [])
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to fetch users')
     } finally {
@@ -89,9 +133,17 @@ export default function UsersPage() {
     setError(null)
 
     try {
+      // Get the current session to include auth headers
+      const { data: { session } } = await supabase.auth.getSession()
+      
+      if (!session) {
+        throw new Error('No active session')
+      }
+
       const response = await fetch('/api/users', {
         method: 'POST',
         headers: {
+          'Authorization': `Bearer ${session.access_token}`,
           'Content-Type': 'application/json',
         },
         body: JSON.stringify(createFormData),
@@ -178,17 +230,29 @@ export default function UsersPage() {
 
   return (
     <div className="space-y-6">
+      {/* Navigation Header */}
       <div className="flex items-center justify-between">
-        <div>
-          <h1 className="text-3xl font-bold tracking-tight">Users</h1>
-          <p className="text-muted-foreground">
-            Manage your team members and their permissions
-          </p>
+        <div className="flex items-center gap-4">
+          <Button variant="outline" asChild>
+            <Link href="/dashboard">
+              <ArrowLeft className="mr-2 h-4 w-4" />
+              Back to Dashboard
+            </Link>
+          </Button>
+          <div>
+            <h1 className="text-3xl font-bold tracking-tight">User Management</h1>
+            <p className="text-muted-foreground">
+              Manage your team members and their permissions
+            </p>
+          </div>
         </div>
-        <Button onClick={() => setShowCreateForm(true)}>
-          <Plus className="mr-2 h-4 w-4" />
-          Add User
-        </Button>
+        <div className="flex items-center gap-2">
+          <Button onClick={() => setShowCreateForm(true)}>
+            <Plus className="mr-2 h-4 w-4" />
+            Add User
+          </Button>
+          <LogoutButton />
+        </div>
       </div>
 
       {error && (
@@ -281,12 +345,12 @@ export default function UsersPage() {
         <CardHeader>
           <CardTitle className="flex items-center gap-2">
             <Users className="h-5 w-5" />
-            Team Members ({users.length})
+            Team Members ({users && Array.isArray(users) ? users.length : 0})
           </CardTitle>
         </CardHeader>
         <CardContent>
           <div className="space-y-4">
-            {users.map((user) => (
+            {users && Array.isArray(users) ? users.map((user) => (
               <div
                 key={user.id}
                 className="flex items-center justify-between p-4 border rounded-lg"
@@ -310,7 +374,7 @@ export default function UsersPage() {
                         <Mail className="h-3 w-3" />
                         {user.email}
                       </span>
-                      <span>Last login: {formatDate(user.last_login_at)}</span>
+                      <span>Last login: {formatDate(user.last_login)}</span>
                     </div>
                   </div>
                 </div>
@@ -343,7 +407,11 @@ export default function UsersPage() {
                   </DropdownMenuContent>
                 </DropdownMenu>
               </div>
-            ))}
+            )) : (
+              <div className="text-center py-8 text-muted-foreground">
+                No users found or failed to load users.
+              </div>
+            )}
           </div>
         </CardContent>
       </Card>

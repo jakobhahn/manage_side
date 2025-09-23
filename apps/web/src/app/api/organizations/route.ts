@@ -57,10 +57,20 @@ export async function POST(request: NextRequest) {
     if (orgError) {
       console.error('Organization creation error:', orgError)
       return NextResponse.json(
-        { error: { message: 'Failed to create organization' } },
+        { error: { message: 'Failed to create organization: ' + orgError.message } },
         { status: 500 }
       )
     }
+
+    if (!orgId) {
+      console.error('Organization creation returned no ID')
+      return NextResponse.json(
+        { error: { message: 'Organization creation returned no ID' } },
+        { status: 500 }
+      )
+    }
+
+    console.log('Organization created successfully with ID:', orgId)
 
     // Update the user's organization_id in auth.users metadata
     const { error: updateError } = await supabase.auth.admin.updateUserById(
@@ -79,10 +89,8 @@ export async function POST(request: NextRequest) {
     }
 
     return NextResponse.json({
-      data: {
-        organizationId: orgId,
-        message: 'Organization created successfully'
-      },
+      organizationId: orgId,
+      message: 'Organization created successfully'
     })
   } catch (error) {
     console.error('Organization creation error:', error)

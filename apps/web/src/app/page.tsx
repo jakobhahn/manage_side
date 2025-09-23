@@ -1,5 +1,7 @@
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
+import Link from 'next/link'
+import { Building2, Info, LogIn } from 'lucide-react'
 
 export default function HomePage() {
   return (
@@ -16,37 +18,52 @@ export default function HomePage() {
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
         <Card>
           <CardHeader>
-            <CardTitle>Menu Management</CardTitle>
+            <CardTitle className="flex items-center gap-2">
+              <Building2 className="h-5 w-5" />
+              Register Organization
+            </CardTitle>
             <CardDescription>
-              Create and manage your restaurant menu with ease
+              Create your restaurant account and start managing your business
             </CardDescription>
           </CardHeader>
           <CardContent>
-            <Button className="w-full">Manage Menu</Button>
+            <Button asChild className="w-full">
+              <Link href="/register">Get Started</Link>
+            </Button>
           </CardContent>
         </Card>
 
         <Card>
           <CardHeader>
-            <CardTitle>Order Tracking</CardTitle>
+            <CardTitle className="flex items-center gap-2">
+              <Info className="h-5 w-5" />
+              About Hans
+            </CardTitle>
             <CardDescription>
-              Track orders in real-time from kitchen to table
+              Learn more about our modular restaurant management platform
             </CardDescription>
           </CardHeader>
           <CardContent>
-            <Button className="w-full">View Orders</Button>
+            <Button asChild variant="outline" className="w-full">
+              <a href="http://localhost:3001" target="_blank" rel="noopener noreferrer">Learn More</a>
+            </Button>
           </CardContent>
         </Card>
 
         <Card>
           <CardHeader>
-            <CardTitle>Analytics</CardTitle>
+            <CardTitle className="flex items-center gap-2">
+              <LogIn className="h-5 w-5" />
+              Sign In
+            </CardTitle>
             <CardDescription>
-              Get insights into your restaurant performance
+              Access your restaurant dashboard and manage your team
             </CardDescription>
           </CardHeader>
           <CardContent>
-            <Button className="w-full">View Analytics</Button>
+            <Button asChild variant="secondary" className="w-full">
+              <Link href="/login">Login</Link>
+            </Button>
           </CardContent>
         </Card>
       </div>

@@ -44,10 +44,8 @@ export async function POST(request: NextRequest) {
     }
 
     return NextResponse.json({
-      data: {
-        user: authData.user,
-        session: authData.session,
-      },
+      user: authData.user,
+      session: authData.session,
     })
   } catch (error) {
     console.error('Signup error:', error)

@@ -1,6 +1,8 @@
 'use client'
 
 import { useState, useEffect } from 'react'
+import { createBrowserClient } from '@supabase/ssr'
+import { useRouter } from 'next/navigation'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
@@ -8,35 +10,39 @@ import {
   Building2, 
   Users, 
   DollarSign, 
-  TrendingUp,
   Clock,
   ShoppingCart,
   BarChart3,
-  FileText,
-  ChefHat,
   Settings
 } from 'lucide-react'
 import Link from 'next/link'
+import { LogoutButton } from '@/components/logout-button'
 
 interface Organization {
   id: string
   name: string
   slug: string
-  subscription_tier: string
-  is_active: boolean
+  created_at: string
 }
 
-interface ModuleSubscription {
+interface User {
   id: string
-  module_name: string
-  is_active: boolean
-  subscription_tier: string
+  name: string
+  email: string
+  role: string
+  organization_id: string
 }
 
 export default function DashboardPage() {
   const [organization, setOrganization] = useState<Organization | null>(null)
-  const [modules, setModules] = useState<ModuleSubscription[]>([])
+  const [user, setUser] = useState<User | null>(null)
   const [isLoading, setIsLoading] = useState(true)
+  const [error, setError] = useState<string | null>(null)
+  const supabase = createBrowserClient(
+    process.env.NEXT_PUBLIC_SUPABASE_URL!,
+    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
+  )
+  const router = useRouter()
 
   useEffect(() => {
     fetchDashboardData()
@@ -45,95 +51,63 @@ export default function DashboardPage() {
   const fetchDashboardData = async () => {
     try {
       setIsLoading(true)
+      setError(null)
       
+      // Check if user is authenticated
+      const { data: { user: authUser } } = await supabase.auth.getUser()
+      
+      if (!authUser) {
+        router.push('/login')
+        return
+      }
+      
+      // Get the current session to include auth headers
+      const { data: { session } } = await supabase.auth.getSession()
+      
+      if (!session) {
+        router.push('/login')
+        return
+      }
+
+      // Update last login timestamp
+      await fetch('/api/users/update-login', {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${session.access_token}`,
+          'Content-Type': 'application/json',
+        },
+      })
+
       // Fetch organization data
-      const orgResponse = await fetch('/api/organizations/me')
+      const orgResponse = await fetch('/api/organizations/me', {
+        headers: {
+          'Authorization': `Bearer ${session.access_token}`,
+          'Content-Type': 'application/json',
+        },
+      })
+      
+      if (!orgResponse.ok) {
+        if (orgResponse.status === 401) {
+          router.push('/login')
+          return
+        }
+        throw new Error('Failed to fetch organization data')
+      }
+      
       const orgData = await orgResponse.json()
       
-      if (orgData.data) {
-        setOrganization(orgData.data)
+      if (orgData.organization) {
+        setOrganization(orgData.organization)
       }
-
-      // Fetch module subscriptions
-      const modulesResponse = await fetch('/api/modules')
-      const modulesData = await modulesResponse.json()
       
-      if (modulesData.data) {
-        setModules(modulesData.data)
+      if (orgData.user) {
+        setUser(orgData.user)
       }
-    } catch (error) {
+    } catch (error: any) {
       console.error('Failed to fetch dashboard data:', error)
+      setError(error.message)
     } finally {
       setIsLoading(false)
-    }
-  }
-
-  const getModuleIcon = (moduleName: string) => {
-    switch (moduleName) {
-      case 'revenue_analytics':
-        return <TrendingUp className="h-5 w-5" />
-      case 'shift_planning':
-        return <Clock className="h-5 w-5" />
-      case 'inventory_management':
-        return <ShoppingCart className="h-5 w-5" />
-      case 'time_clock':
-        return <Clock className="h-5 w-5" />
-      case 'sales_management':
-        return <DollarSign className="h-5 w-5" />
-      case 'kpi_dashboard':
-        return <BarChart3 className="h-5 w-5" />
-      case 'reporting':
-        return <FileText className="h-5 w-5" />
-      case 'menu_management':
-        return <ChefHat className="h-5 w-5" />
-      default:
-        return <Settings className="h-5 w-5" />
-    }
-  }
-
-  const getModuleTitle = (moduleName: string) => {
-    switch (moduleName) {
-      case 'revenue_analytics':
-        return 'Revenue Analytics'
-      case 'shift_planning':
-        return 'Shift Planning'
-      case 'inventory_management':
-        return 'Inventory Management'
-      case 'time_clock':
-        return 'Time Clock'
-      case 'sales_management':
-        return 'Sales Management'
-      case 'kpi_dashboard':
-        return 'KPI Dashboard'
-      case 'reporting':
-        return 'Reporting'
-      case 'menu_management':
-        return 'Menu Management'
-      default:
-        return moduleName
-    }
-  }
-
-  const getModuleDescription = (moduleName: string) => {
-    switch (moduleName) {
-      case 'revenue_analytics':
-        return 'Track revenue, analyze payment methods, and forecast sales'
-      case 'shift_planning':
-        return 'Manage staff schedules and labor costs'
-      case 'inventory_management':
-        return 'Track stock levels and manage suppliers'
-      case 'time_clock':
-        return 'Digital time tracking with GPS verification'
-      case 'sales_management':
-        return 'Order management and customer database'
-      case 'kpi_dashboard':
-        return 'Customizable dashboards with real-time metrics'
-      case 'reporting':
-        return 'Automated reports and compliance documentation'
-      case 'menu_management':
-        return 'Digital menu management with dynamic pricing'
-      default:
-        return 'Module description'
     }
   }
 
@@ -143,6 +117,118 @@ export default function DashboardPage() {
         <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div>
       </div>
     )
+  }
+
+  if (error) {
+    return (
+      <div className="flex items-center justify-center h-64">
+        <div className="text-center">
+          <h2 className="text-xl font-semibold text-red-600 mb-2">Error</h2>
+          <p className="text-gray-600">{error}</p>
+          <Button onClick={fetchDashboardData} className="mt-4">
+            Try Again
+          </Button>
+        </div>
+      </div>
+    )
+  }
+
+  // Role-based UI rendering
+  const renderQuickStats = () => {
+    const stats = [
+      {
+        title: "Organization",
+        value: organization?.name || 'N/A',
+        icon: Building2,
+        link: undefined
+      }
+    ]
+
+    // Add role-specific stats
+    if (user?.role === 'owner' || user?.role === 'manager') {
+      stats.push(
+        {
+          title: "Team Members",
+          value: "-",
+          icon: Users,
+          link: "/dashboard/users"
+        },
+        {
+          title: "Today's Revenue",
+          value: "-",
+          icon: DollarSign,
+          link: "/dashboard/revenue"
+        }
+      )
+    }
+
+    // All roles can see shifts
+    stats.push({
+      title: "Active Shifts",
+      value: "-",
+      icon: Clock,
+      link: "/dashboard/shifts"
+    })
+
+    return stats
+  }
+
+  const renderQuickActions = () => {
+    const actions = []
+
+    // Staff can only see shift-related actions
+    if (user?.role === 'staff') {
+      actions.push(
+        {
+          title: "View My Schedule",
+          description: "Check your upcoming shifts and schedule",
+          icon: Clock,
+          href: "/dashboard/shifts",
+          variant: "default" as const
+        },
+        {
+          title: "Clock In/Out",
+          description: "Record your work hours",
+          icon: Clock,
+          href: "/dashboard/timeclock",
+          variant: "outline" as const
+        }
+      )
+    } else {
+      // Owner and Manager see all actions
+      actions.push(
+        {
+          title: "Manage Team",
+          description: "Add, edit, or remove team members",
+          icon: Users,
+          href: "/dashboard/users",
+          variant: "default" as const
+        },
+        {
+          title: "View Analytics",
+          description: "Check revenue and performance metrics",
+          icon: BarChart3,
+          href: "/dashboard/revenue",
+          variant: "outline" as const
+        },
+        {
+          title: "Schedule Shifts",
+          description: "Plan and manage employee schedules",
+          icon: Clock,
+          href: "/dashboard/shifts",
+          variant: "outline" as const
+        },
+        {
+          title: "Manage Inventory",
+          description: "Track stock levels and suppliers",
+          icon: ShoppingCart,
+          href: "/dashboard/inventory",
+          variant: "outline" as const
+        }
+      )
+    }
+
+    return actions
   }
 
   return (
@@ -156,126 +242,62 @@ export default function DashboardPage() {
           <p className="text-muted-foreground">
             Manage your restaurant operations with our modular platform
           </p>
+          {user && (
+            <p className="text-sm text-gray-600 mt-1">
+              Logged in as {user.name} ({user.role})
+            </p>
+          )}
         </div>
         <div className="flex items-center gap-2">
           <Badge variant="outline">
-            {organization?.subscription_tier || 'Free'} Plan
+            {user?.role || 'User'}
           </Badge>
-          <Button asChild>
-            <Link href="/dashboard/settings">
-              <Settings className="mr-2 h-4 w-4" />
-              Settings
-            </Link>
-          </Button>
+          {user?.role === 'owner' || user?.role === 'manager' ? (
+            <Button asChild>
+              <Link href="/dashboard/users">
+                <Settings className="mr-2 h-4 w-4" />
+                Settings
+              </Link>
+            </Button>
+          ) : (
+            <Button asChild>
+              <Link href="/dashboard/shifts">
+                <Settings className="mr-2 h-4 w-4" />
+                My Schedule
+              </Link>
+            </Button>
+          )}
+          <LogoutButton />
         </div>
       </div>
 
       {/* Quick Stats */}
       <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
-        <Card>
-          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">Active Modules</CardTitle>
-            <Building2 className="h-4 w-4 text-muted-foreground" />
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold">
-              {modules.filter(m => m.is_active).length}
-            </div>
-            <p className="text-xs text-muted-foreground">
-              of {modules.length} available modules
-            </p>
-          </CardContent>
-        </Card>
-        
-        <Card>
-          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">Team Members</CardTitle>
-            <Users className="h-4 w-4 text-muted-foreground" />
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold">-</div>
-            <p className="text-xs text-muted-foreground">
-              <Link href="/dashboard/users" className="text-blue-600 hover:underline">
-                Manage users
-              </Link>
-            </p>
-          </CardContent>
-        </Card>
-        
-        <Card>
-          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">Today's Revenue</CardTitle>
-            <DollarSign className="h-4 w-4 text-muted-foreground" />
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold">-</div>
-            <p className="text-xs text-muted-foreground">
-              <Link href="/dashboard/revenue" className="text-blue-600 hover:underline">
-                View analytics
-              </Link>
-            </p>
-          </CardContent>
-        </Card>
-        
-        <Card>
-          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">Active Shifts</CardTitle>
-            <Clock className="h-4 w-4 text-muted-foreground" />
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold">-</div>
-            <p className="text-xs text-muted-foreground">
-              <Link href="/dashboard/shifts" className="text-blue-600 hover:underline">
-                View schedule
-              </Link>
-            </p>
-          </CardContent>
-        </Card>
-      </div>
-
-      {/* Modules Grid */}
-      <div>
-        <h2 className="text-2xl font-bold tracking-tight mb-4">Available Modules</h2>
-        <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
-          {modules.map((module) => (
-            <Card key={module.id} className="hover:shadow-md transition-shadow">
-              <CardHeader>
-                <div className="flex items-center justify-between">
-                  <div className="flex items-center gap-2">
-                    {getModuleIcon(module.module_name)}
-                    <CardTitle className="text-lg">
-                      {getModuleTitle(module.module_name)}
-                    </CardTitle>
-                  </div>
-                  <Badge 
-                    variant={module.is_active ? "default" : "outline"}
-                  >
-                    {module.is_active ? "Active" : "Inactive"}
-                  </Badge>
-                </div>
-                <CardDescription>
-                  {getModuleDescription(module.module_name)}
-                </CardDescription>
+        {renderQuickStats().map((stat, index) => {
+          const IconComponent = stat.icon
+          return (
+            <Card key={index}>
+              <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+                <CardTitle className="text-sm font-medium">{stat.title}</CardTitle>
+                <IconComponent className="h-4 w-4 text-muted-foreground" />
               </CardHeader>
               <CardContent>
-                <div className="flex items-center justify-between">
-                  <Badge variant="secondary">
-                    {module.subscription_tier}
-                  </Badge>
-                  <Button 
-                    variant={module.is_active ? "outline" : "default"}
-                    size="sm"
-                    asChild
-                  >
-                    <Link href={`/dashboard/${module.module_name}`}>
-                      {module.is_active ? "Open" : "Activate"}
+                <div className="text-2xl font-bold">{stat.value}</div>
+                <p className="text-xs text-muted-foreground">
+                  {stat.link ? (
+                    <Link href={stat.link} className="text-blue-600 hover:underline">
+                      {stat.title === "Team Members" ? "Manage users" : 
+                       stat.title === "Today's Revenue" ? "View analytics" :
+                       stat.title === "Active Shifts" ? "View schedule" : "View details"}
                     </Link>
-                  </Button>
-                </div>
+                  ) : (
+                    organization?.slug || 'Restaurant management platform'
+                  )}
+                </p>
               </CardContent>
             </Card>
-          ))}
-        </div>
+          )
+        })}
       </div>
 
       {/* Quick Actions */}
@@ -288,30 +310,17 @@ export default function DashboardPage() {
         </CardHeader>
         <CardContent>
           <div className="grid gap-2 md:grid-cols-2 lg:grid-cols-4">
-            <Button variant="outline" asChild>
-              <Link href="/dashboard/users">
-                <Users className="mr-2 h-4 w-4" />
-                Add Team Member
-              </Link>
-            </Button>
-            <Button variant="outline" asChild>
-              <Link href="/dashboard/merchants">
-                <Building2 className="mr-2 h-4 w-4" />
-                Setup Payment
-              </Link>
-            </Button>
-            <Button variant="outline" asChild>
-              <Link href="/dashboard/revenue">
-                <TrendingUp className="mr-2 h-4 w-4" />
-                View Revenue
-              </Link>
-            </Button>
-            <Button variant="outline" asChild>
-              <Link href="/dashboard/settings">
-                <Settings className="mr-2 h-4 w-4" />
-                Settings
-              </Link>
-            </Button>
+            {renderQuickActions().map((action, index) => {
+              const IconComponent = action.icon
+              return (
+                <Button key={index} variant={action.variant} asChild>
+                  <Link href={action.href as any}>
+                    <IconComponent className="mr-2 h-4 w-4" />
+                    {action.title}
+                  </Link>
+                </Button>
+              )
+            })}
           </div>
         </CardContent>
       </Card>
