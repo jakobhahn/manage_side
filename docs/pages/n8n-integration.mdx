@@ -1,0 +1,218 @@
+# n8n Integration
+
+This document describes how to set up n8n workflows for SumUp integration with the Hans Restaurant App.
+
+## Overview
+
+n8n is used to automate the synchronization of payment data from SumUp to the Hans Restaurant App. The integration includes:
+
+- **Credential Management**: Secure retrieval of encrypted SumUp API keys
+- **Data Synchronization**: Automated fetching of transaction data
+- **Webhook Processing**: Real-time transaction updates
+- **Error Handling**: Robust error handling and retry mechanisms
+
+## Setup
+
+### 1. Environment Variables
+
+Configure the following environment variables in your n8n instance:
+
+```bash
+# Hans Restaurant App API
+HANS_API_URL=https://your-domain.com/api
+N8N_SHARED_SECRET=your-shared-secret-key
+
+# SumUp API (will be fetched dynamically)
+# No need to set these as they're retrieved from the app
+```
+
+### 2. n8n Workflow: SumUp Data Sync
+
+Create a new workflow with the following nodes:
+
+#### Node 1: HTTP Request - Get Credentials
+- **Method**: GET
+- **URL**: `{{ $env.HANS_API_URL }}/merchant-codes/credentials`
+- **Headers**:
+  ```json
+  {
+    "Authorization": "Bearer {{ $env.N8N_SHARED_SECRET }}",
+    "Content-Type": "application/json"
+  }
+  ```
+- **Query Parameters**:
+  - `organization_id`: The organization ID to sync
+  - `merchant_code`: The specific merchant code to sync
+
+#### Node 2: HTTP Request - Fetch SumUp Transactions
+- **Method**: GET
+- **URL**: `https://api.sumup.com/v0.1/me/transactions`
+- **Headers**:
+  ```json
+  {
+    "Authorization": "Bearer {{ $json.access_token }}",
+    "Content-Type": "application/json"
+  }
+  ```
+- **Query Parameters**:
+  - `merchant_code`: `{{ $json.merchant_code }}`
+  - `from`: Start date (e.g., `2024-01-01`)
+  - `to`: End date (e.g., `2024-01-31`)
+
+#### Node 3: HTTP Request - Send to Hans App
+- **Method**: POST
+- **URL**: `{{ $env.HANS_API_URL }}/webhooks/sumup`
+- **Headers**:
+  ```json
+  {
+    "Content-Type": "application/json",
+    "x-sumup-signature": "{{ $json.signature }}"
+  }
+  ```
+- **Body**: Transaction data from SumUp
+
+### 3. n8n Workflow: Webhook Processing
+
+Create a webhook workflow to handle real-time SumUp webhooks:
+
+#### Node 1: Webhook Trigger
+- **HTTP Method**: POST
+- **Path**: `/sumup-webhook`
+- **Response Mode**: Response Code
+
+#### Node 2: HTTP Request - Forward to Hans App
+- **Method**: POST
+- **URL**: `{{ $env.HANS_API_URL }}/webhooks/sumup`
+- **Headers**:
+  ```json
+  {
+    "Content-Type": "application/json",
+    "x-sumup-signature": "{{ $headers['x-sumup-signature'] }}"
+  }
+  ```
+- **Body**: `{{ $json }}`
+
+## Security
+
+### API Key Encryption
+
+The Hans Restaurant App uses AES-256-GCM encryption to store SumUp API credentials:
+
+- **Encryption Algorithm**: AES-256-GCM
+- **Key Derivation**: Uses a shared secret key
+- **Salt Generation**: Random salt for each credential set
+- **Secure Storage**: Encrypted credentials stored in database
+
+### Authentication
+
+n8n authenticates with the Hans Restaurant App using:
+
+- **Shared Secret**: Pre-configured secret key
+- **Bearer Token**: Sent in Authorization header
+- **Organization Isolation**: Only access to authorized organization data
+
+## Error Handling
+
+### Retry Logic
+
+Implement exponential backoff for failed requests:
+
+```javascript
+// n8n Function Node
+const maxRetries = 3;
+const baseDelay = 1000; // 1 second
+
+for (let attempt = 1; attempt <= maxRetries; attempt++) {
+  try {
+    // Make API request
+    const response = await $http.request({
+      method: 'POST',
+      url: 'https://api.sumup.com/v0.1/me/transactions',
+      // ... other options
+    });
+    
+    if (response.status === 200) {
+      return response.data;
+    }
+  } catch (error) {
+    if (attempt === maxRetries) {
+      throw error;
+    }
+    
+    const delay = baseDelay * Math.pow(2, attempt - 1);
+    await new Promise(resolve => setTimeout(resolve, delay));
+  }
+}
+```
+
+### Error Notifications
+
+Configure error notifications for failed syncs:
+
+- **Email Alerts**: Send notifications to administrators
+- **Slack Integration**: Post errors to Slack channel
+- **Logging**: Comprehensive error logging
+
+## Monitoring
+
+### Health Checks
+
+Set up health checks to monitor the integration:
+
+- **Credential Validation**: Verify API keys are valid
+- **Sync Status**: Check last successful sync
+- **Error Rates**: Monitor failure rates
+
+### Metrics
+
+Track key metrics:
+
+- **Sync Frequency**: How often data is synchronized
+- **Transaction Volume**: Number of transactions processed
+- **Error Count**: Number of failed operations
+- **Response Times**: API response times
+
+## Troubleshooting
+
+### Common Issues
+
+1. **Authentication Failures**
+   - Verify shared secret is correct
+   - Check organization ID and merchant code
+   - Ensure API keys are valid
+
+2. **Data Sync Issues**
+   - Check SumUp API rate limits
+   - Verify date ranges are correct
+   - Check network connectivity
+
+3. **Webhook Failures**
+   - Verify webhook URL is accessible
+   - Check signature validation
+   - Ensure proper error handling
+
+### Debug Mode
+
+Enable debug logging in n8n:
+
+```javascript
+// Add to Function Node
+console.log('Debug info:', {
+  credentials: $json,
+  transactionData: $input.all(),
+  timestamp: new Date().toISOString()
+});
+```
+
+## Best Practices
+
+1. **Rate Limiting**: Respect SumUp API rate limits
+2. **Data Validation**: Validate all incoming data
+3. **Error Handling**: Implement comprehensive error handling
+4. **Monitoring**: Set up proper monitoring and alerting
+5. **Security**: Keep credentials secure and rotate regularly
+6. **Testing**: Test workflows thoroughly before production
+
+---
+
+*Last updated: 2025-01-22*
