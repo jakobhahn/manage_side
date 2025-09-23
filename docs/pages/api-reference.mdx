@@ -1,0 +1,292 @@
+# API Reference
+
+This document provides comprehensive API documentation for the Hans Restaurant App.
+
+## Authentication
+
+All API endpoints require authentication via Bearer token in the Authorization header:
+
+```http
+Authorization: Bearer <your-jwt-token>
+```
+
+## Base URL
+
+- **Development**: `http://localhost:3000/api`
+- **Production**: `https://your-domain.com/api`
+
+## Endpoints
+
+### Authentication
+
+#### POST /api/auth/signup
+Create a new user account.
+
+**Request Body:**
+```json
+{
+  "email": "user@example.com",
+  "password": "password123",
+  "name": "John Doe"
+}
+```
+
+**Response:**
+```json
+{
+  "user": {
+    "id": "uuid",
+    "email": "user@example.com",
+    "created_at": "2024-01-22T10:00:00Z"
+  },
+  "session": {
+    "access_token": "jwt-token",
+    "refresh_token": "refresh-token"
+  }
+}
+```
+
+#### POST /api/auth/logout
+Logout the current user and invalidate session.
+
+**Response:**
+```json
+{
+  "message": "Logged out successfully"
+}
+```
+
+### Organizations
+
+#### POST /api/organizations
+Create a new organization (restaurant).
+
+**Request Body:**
+```json
+{
+  "name": "My Restaurant",
+  "slug": "my-restaurant",
+  "ownerName": "John Doe",
+  "ownerEmail": "john@myrestaurant.com"
+}
+```
+
+**Response:**
+```json
+{
+  "organizationId": "uuid",
+  "message": "Organization created successfully"
+}
+```
+
+#### GET /api/organizations/me
+Get current user's organization details.
+
+**Response:**
+```json
+{
+  "organization": {
+    "id": "uuid",
+    "name": "My Restaurant",
+    "slug": "my-restaurant",
+    "created_at": "2024-01-22T10:00:00Z"
+  },
+  "user": {
+    "id": "uuid",
+    "name": "John Doe",
+    "email": "john@myrestaurant.com",
+    "role": "owner"
+  }
+}
+```
+
+### Users
+
+#### GET /api/users
+Get all users in the current organization.
+
+**Response:**
+```json
+[
+  {
+    "id": "uuid",
+    "name": "John Doe",
+    "email": "john@myrestaurant.com",
+    "role": "owner",
+    "is_active": true,
+    "last_login": "2024-01-22T10:00:00Z",
+    "created_at": "2024-01-22T10:00:00Z"
+  }
+]
+```
+
+#### POST /api/users
+Create a new user in the current organization.
+
+**Request Body:**
+```json
+{
+  "name": "Jane Smith",
+  "email": "jane@myrestaurant.com",
+  "role": "staff",
+  "password": "password123"
+}
+```
+
+**Response:**
+```json
+{
+  "user": {
+    "id": "uuid",
+    "name": "Jane Smith",
+    "email": "jane@myrestaurant.com",
+    "role": "staff",
+    "is_active": true,
+    "created_at": "2024-01-22T10:00:00Z"
+  }
+}
+```
+
+#### DELETE /api/users/[id]
+Delete a user from the organization.
+
+**Response:**
+```json
+{
+  "message": "User deleted successfully"
+}
+```
+
+#### POST /api/users/update-login
+Update the last login timestamp for the current user.
+
+**Response:**
+```json
+{
+  "success": true
+}
+```
+
+### Revenue Analytics
+
+#### GET /api/revenue
+Get revenue analytics data for the current organization.
+
+**Query Parameters:**
+- `period` (optional): `daily`, `weekly`, or `monthly` (default: `daily`)
+
+**Response:**
+```json
+[
+  {
+    "period_type": "daily",
+    "period_start": "2024-01-22",
+    "total_revenue": 1250.50,
+    "transaction_count": 45,
+    "created_at": "2024-01-22T10:00:00Z",
+    "updated_at": "2024-01-22T10:00:00Z"
+  }
+]
+```
+
+## Error Responses
+
+All endpoints return consistent error responses:
+
+```json
+{
+  "error": {
+    "message": "Error description"
+  }
+}
+```
+
+### Common HTTP Status Codes
+
+- `200` - Success
+- `400` - Bad Request (invalid input)
+- `401` - Unauthorized (invalid or missing token)
+- `403` - Forbidden (insufficient permissions)
+- `404` - Not Found
+- `500` - Internal Server Error
+
+## Rate Limiting
+
+API requests are rate limited to prevent abuse:
+
+- **Authentication endpoints**: 5 requests per minute per IP
+- **Data endpoints**: 100 requests per minute per user
+- **Bulk operations**: 10 requests per minute per user
+
+## Security
+
+- All endpoints require valid JWT tokens
+- Row-Level Security (RLS) ensures data isolation between organizations
+- Input validation and sanitization on all endpoints
+- HTTPS required in production
+
+## Examples
+
+### Creating a Complete User Flow
+
+1. **Register Organization:**
+```bash
+curl -X POST http://localhost:3000/api/organizations \
+  -H "Content-Type: application/json" \
+  -H "Authorization: Bearer <token>" \
+  -d '{
+    "name": "My Restaurant",
+    "slug": "my-restaurant",
+    "ownerName": "John Doe",
+    "ownerEmail": "john@myrestaurant.com"
+  }'
+```
+
+2. **Add Team Member:**
+```bash
+curl -X POST http://localhost:3000/api/users \
+  -H "Content-Type: application/json" \
+  -H "Authorization: Bearer <token>" \
+  -d '{
+    "name": "Jane Smith",
+    "email": "jane@myrestaurant.com",
+    "role": "manager",
+    "password": "password123"
+  }'
+```
+
+3. **Get Revenue Data:**
+```bash
+curl -X GET "http://localhost:3000/api/revenue?period=weekly" \
+  -H "Authorization: Bearer <token>"
+```
+
+## SDK and Libraries
+
+### JavaScript/TypeScript
+```typescript
+// Example API client
+class HansAPI {
+  private baseURL: string;
+  private token: string;
+
+  constructor(baseURL: string, token: string) {
+    this.baseURL = baseURL;
+    this.token = token;
+  }
+
+  async getUsers() {
+    const response = await fetch(`${this.baseURL}/api/users`, {
+      headers: {
+        'Authorization': `Bearer ${this.token}`,
+        'Content-Type': 'application/json'
+      }
+    });
+    return response.json();
+  }
+}
+```
+
+---
+
+*Last updated: 2025-01-22*
