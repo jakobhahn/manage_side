@@ -1,8 +1,40 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@supabase/supabase-js'
+import crypto from 'crypto'
 
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!
 const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY!
+
+// Encryption configuration
+const ENCRYPTION_ALGORITHM = 'aes-256-gcm'
+const ENCRYPTION_KEY = process.env.ENCRYPTION_KEY || 'your-32-character-secret-key-here' // In production, use a secure key
+
+// Encryption functions
+function encrypt(text: string): { encrypted: string; iv: string; tag: string } {
+  const iv = crypto.randomBytes(16)
+  const cipher = crypto.createCipher(ENCRYPTION_ALGORITHM, ENCRYPTION_KEY)
+  
+  let encrypted = cipher.update(text, 'utf8', 'hex')
+  encrypted += cipher.final('hex')
+  
+  const tag = cipher.getAuthTag()
+  
+  return {
+    encrypted,
+    iv: iv.toString('hex'),
+    tag: tag.toString('hex')
+  }
+}
+
+function decrypt(encrypted: string, iv: string, tag: string): string {
+  const decipher = crypto.createDecipher(ENCRYPTION_ALGORITHM, ENCRYPTION_KEY)
+  decipher.setAuthTag(Buffer.from(tag, 'hex'))
+  
+  let decrypted = decipher.update(encrypted, 'hex', 'utf8')
+  decrypted += decipher.final('utf8')
+  
+  return decrypted
+}
 
 export async function GET(request: NextRequest) {
   try {
@@ -89,11 +121,18 @@ export async function POST(request: NextRequest) {
     }
 
     const token = authHeader.split(' ')[1]
-    const { merchant_code, description } = await request.json()
+    const { merchant_code, description, api_key, api_secret } = await request.json()
 
     if (!merchant_code || !description) {
       return NextResponse.json(
         { error: { message: 'merchant_code and description are required' } },
+        { status: 400 }
+      )
+    }
+
+    if (!api_key || !api_secret) {
+      return NextResponse.json(
+        { error: { message: 'api_key and api_secret are required' } },
         { status: 400 }
       )
     }
@@ -147,14 +186,23 @@ export async function POST(request: NextRequest) {
       )
     }
 
-    // Insert new merchant code
+    // Encrypt API credentials
+    const encryptedKey = encrypt(api_key)
+    const encryptedSecret = encrypt(api_secret)
+    const salt = crypto.randomBytes(32).toString('hex')
+
+    // Insert new merchant code with encrypted credentials
     const { data: newMerchantCode, error: insertError } = await supabase
       .from('merchant_codes')
       .insert({
         organization_id: userData.organization_id,
         merchant_code,
         description,
-        is_active: true
+        api_key_encrypted: JSON.stringify(encryptedKey),
+        api_secret_encrypted: JSON.stringify(encryptedSecret),
+        encryption_salt: salt,
+        is_active: true,
+        sync_status: 'inactive'
       })
       .select()
       .single()

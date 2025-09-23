@@ -28,6 +28,16 @@ interface MerchantCode {
   description: string
   is_active: boolean
   created_at: string
+  sync_status: 'active' | 'inactive' | 'error' | 'syncing'
+  last_sync_at: string | null
+  webhook_url: string | null
+}
+
+interface CreateMerchantCodeData {
+  merchant_code: string
+  description: string
+  api_key: string
+  api_secret: string
 }
 
 interface SyncResult {
@@ -40,11 +50,19 @@ export default function SumUpPage() {
   const [merchantCodes, setMerchantCodes] = useState<MerchantCode[]>([])
   const [isLoading, setIsLoading] = useState(true)
   const [isSyncing, setIsSyncing] = useState(false)
+  const [isCreating, setIsCreating] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [success, setSuccess] = useState<string | null>(null)
   const [syncResult, setSyncResult] = useState<SyncResult | null>(null)
   const [fromDate, setFromDate] = useState('')
   const [toDate, setToDate] = useState('')
+  const [showCreateForm, setShowCreateForm] = useState(false)
+  const [createFormData, setCreateFormData] = useState<CreateMerchantCodeData>({
+    merchant_code: '',
+    description: '',
+    api_key: '',
+    api_secret: ''
+  })
   const supabase = createBrowserClient(
     process.env.NEXT_PUBLIC_SUPABASE_URL!,
     process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
@@ -206,6 +224,57 @@ export default function SumUpPage() {
     })
   }
 
+  const handleCreateMerchantCode = async (e: React.FormEvent) => {
+    e.preventDefault()
+    
+    if (!createFormData.merchant_code || !createFormData.description || !createFormData.api_key || !createFormData.api_secret) {
+      setError('All fields are required')
+      return
+    }
+
+    setIsCreating(true)
+    setError(null)
+
+    try {
+      const { data: { session } } = await supabase.auth.getSession()
+      
+      if (!session) {
+        throw new Error('No active session')
+      }
+
+      const response = await fetch('/api/merchant-codes', {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${session.access_token}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(createFormData),
+      })
+      
+      const data = await response.json()
+      
+      if (data.error) {
+        throw new Error(data.error.message)
+      }
+      
+      setSuccess('Merchant code created successfully')
+      await fetchMerchantCodes()
+      
+      // Reset form
+      setCreateFormData({
+        merchant_code: '',
+        description: '',
+        api_key: '',
+        api_secret: ''
+      })
+      setShowCreateForm(false)
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to create merchant code')
+    } finally {
+      setIsCreating(false)
+    }
+  }
+
   if (isLoading) {
     return (
       <div className="flex items-center justify-center h-64">
@@ -255,6 +324,96 @@ export default function SumUpPage() {
         </Alert>
       )}
 
+      {/* Add Merchant Code Form */}
+      <Card>
+        <CardHeader>
+          <CardTitle className="flex items-center justify-between">
+            <div className="flex items-center gap-2">
+              <CreditCard className="h-5 w-5" />
+              Add New Merchant Account
+            </div>
+            <Button 
+              variant="outline" 
+              onClick={() => setShowCreateForm(!showCreateForm)}
+            >
+              {showCreateForm ? 'Cancel' : 'Add Account'}
+            </Button>
+          </CardTitle>
+          <CardDescription>
+            Add a new SumUp merchant account with API credentials
+          </CardDescription>
+        </CardHeader>
+        {showCreateForm && (
+          <CardContent>
+            <form onSubmit={handleCreateMerchantCode} className="space-y-4">
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div className="space-y-2">
+                  <Label htmlFor="merchant_code">Merchant Code</Label>
+                  <Input
+                    id="merchant_code"
+                    value={createFormData.merchant_code}
+                    onChange={(e) => setCreateFormData({ ...createFormData, merchant_code: e.target.value })}
+                    placeholder="e.g., 123456789"
+                    required
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="description">Description</Label>
+                  <Input
+                    id="description"
+                    value={createFormData.description}
+                    onChange={(e) => setCreateFormData({ ...createFormData, description: e.target.value })}
+                    placeholder="e.g., Main Restaurant POS"
+                    required
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="api_key">API Key</Label>
+                  <Input
+                    id="api_key"
+                    type="password"
+                    value={createFormData.api_key}
+                    onChange={(e) => setCreateFormData({ ...createFormData, api_key: e.target.value })}
+                    placeholder="Enter SumUp API Key"
+                    required
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="api_secret">API Secret</Label>
+                  <Input
+                    id="api_secret"
+                    type="password"
+                    value={createFormData.api_secret}
+                    onChange={(e) => setCreateFormData({ ...createFormData, api_secret: e.target.value })}
+                    placeholder="Enter SumUp API Secret"
+                    required
+                  />
+                </div>
+              </div>
+              <div className="flex justify-end gap-2">
+                <Button 
+                  type="button" 
+                  variant="outline" 
+                  onClick={() => setShowCreateForm(false)}
+                >
+                  Cancel
+                </Button>
+                <Button type="submit" disabled={isCreating}>
+                  {isCreating ? (
+                    <>
+                      <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                      Creating...
+                    </>
+                  ) : (
+                    'Create Account'
+                  )}
+                </Button>
+              </div>
+            </form>
+          </CardContent>
+        )}
+      </Card>
+
       {/* Merchant Codes */}
       <Card>
         <CardHeader>
@@ -278,14 +437,26 @@ export default function SumUpPage() {
                     <div>
                       <h3 className="font-medium">{merchant.merchant_code}</h3>
                       <p className="text-sm text-muted-foreground">{merchant.description}</p>
-                      <p className="text-xs text-muted-foreground">
-                        Created: {formatDate(merchant.created_at)}
-                      </p>
+                      <div className="flex items-center gap-2 text-xs text-muted-foreground">
+                        <span>Created: {formatDate(merchant.created_at)}</span>
+                        {merchant.last_sync_at && (
+                          <span>• Last sync: {formatDate(merchant.last_sync_at)}</span>
+                        )}
+                      </div>
                     </div>
                   </div>
                   <div className="flex items-center gap-2">
                     <Badge variant={merchant.is_active ? 'default' : 'secondary'}>
                       {merchant.is_active ? 'Active' : 'Inactive'}
+                    </Badge>
+                    <Badge 
+                      variant={
+                        merchant.sync_status === 'active' ? 'default' :
+                        merchant.sync_status === 'error' ? 'destructive' :
+                        merchant.sync_status === 'syncing' ? 'secondary' : 'outline'
+                      }
+                    >
+                      {merchant.sync_status}
                     </Badge>
                     <Button variant="ghost" size="sm">
                       <Settings className="h-4 w-4" />
