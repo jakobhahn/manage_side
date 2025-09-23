@@ -1,0 +1,343 @@
+# Configuration Guide
+
+This document provides a comprehensive guide for configuring the Hans Restaurant App with all required environment variables, keys, and secrets.
+
+## Environment Variables Overview
+
+The Hans Restaurant App requires several environment variables to function properly. These are organized by component and security level.
+
+## Hans Restaurant App Configuration
+
+### Required Environment Variables
+
+Create a `.env.local` file in your Hans Restaurant App root directory:
+
+```bash
+# ===========================================
+# SUPABASE CONFIGURATION
+# ===========================================
+# Get these from your Supabase project dashboard
+# Settings > API > Project API keys
+NEXT_PUBLIC_SUPABASE_URL=https://your-project.supabase.co
+NEXT_PUBLIC_SUPABASE_ANON_KEY=eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...
+SUPABASE_SERVICE_ROLE_KEY=eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...
+
+# ===========================================
+# ENCRYPTION CONFIGURATION
+# ===========================================
+# Generate with: openssl rand -hex 16
+# Must be exactly 32 characters
+ENCRYPTION_KEY=your-32-character-encryption-key-here
+
+# ===========================================
+# N8N INTEGRATION
+# ===========================================
+# Generate with: openssl rand -base64 32
+# Must match the N8N_SHARED_SECRET in n8n
+N8N_SHARED_SECRET=your-shared-secret-for-n8n
+
+# ===========================================
+# SUMUP INTEGRATION (Optional)
+# ===========================================
+# Get from SumUp merchant dashboard
+# Settings > API > Webhook settings
+SUMUP_WEBHOOK_SECRET=your-sumup-webhook-secret
+```
+
+### Environment Variable Details
+
+#### Supabase Configuration
+
+| Variable | Description | Where to Find | Required |
+|----------|-------------|---------------|----------|
+| `NEXT_PUBLIC_SUPABASE_URL` | Your Supabase project URL | Supabase Dashboard > Settings > API | Yes |
+| `NEXT_PUBLIC_SUPABASE_ANON_KEY` | Public anon key for client operations | Supabase Dashboard > Settings > API | Yes |
+| `SUPABASE_SERVICE_ROLE_KEY` | Service role key for admin operations | Supabase Dashboard > Settings > API | Yes |
+
+#### Encryption Configuration
+
+| Variable | Description | Generation | Required |
+|----------|-------------|------------|----------|
+| `ENCRYPTION_KEY` | AES-256-GCM encryption key for API credentials | `openssl rand -hex 16` | Yes |
+
+#### n8n Integration
+
+| Variable | Description | Generation | Required |
+|----------|-------------|------------|----------|
+| `N8N_SHARED_SECRET` | Shared secret for n8n authentication | `openssl rand -base64 32` | Yes |
+
+#### SumUp Integration
+
+| Variable | Description | Where to Find | Required |
+|----------|-------------|---------------|----------|
+| `SUMUP_WEBHOOK_SECRET` | Webhook secret for SumUp webhooks | SumUp Dashboard > Settings > API | No |
+
+## n8n Configuration
+
+### Required Environment Variables
+
+Create a `.env` file in your n8n directory:
+
+```bash
+# ===========================================
+# HANS RESTAURANT APP INTEGRATION
+# ===========================================
+# Must match the N8N_SHARED_SECRET in Hans App
+HANS_API_URL=https://your-domain.com/api
+N8N_SHARED_SECRET=your-shared-secret-for-n8n
+
+# ===========================================
+# N8N BASIC CONFIGURATION
+# ===========================================
+N8N_BASIC_AUTH_ACTIVE=true
+N8N_BASIC_AUTH_USER=admin
+N8N_BASIC_AUTH_PASSWORD=your-secure-password
+
+# ===========================================
+# DATABASE CONFIGURATION (Optional)
+# ===========================================
+# Only if using external database
+DB_TYPE=postgresdb
+DB_POSTGRESDB_HOST=your-postgres-host
+DB_POSTGRESDB_PORT=5432
+DB_POSTGRESDB_DATABASE=n8n
+DB_POSTGRESDB_USER=n8n
+DB_POSTGRESDB_PASSWORD=your-postgres-password
+```
+
+### n8n Environment Variable Details
+
+| Variable | Description | Required | Default |
+|----------|-------------|----------|---------|
+| `HANS_API_URL` | URL of your Hans Restaurant App API | Yes | - |
+| `N8N_SHARED_SECRET` | Shared secret for authentication | Yes | - |
+| `N8N_BASIC_AUTH_ACTIVE` | Enable basic authentication | No | false |
+| `N8N_BASIC_AUTH_USER` | Basic auth username | No | admin |
+| `N8N_BASIC_AUTH_PASSWORD` | Basic auth password | No | - |
+| `DB_TYPE` | Database type | No | sqlite |
+| `DB_POSTGRESDB_HOST` | PostgreSQL host | No | localhost |
+| `DB_POSTGRESDB_PORT` | PostgreSQL port | No | 5432 |
+| `DB_POSTGRESDB_DATABASE` | PostgreSQL database name | No | n8n |
+| `DB_POSTGRESDB_USER` | PostgreSQL username | No | n8n |
+| `DB_POSTGRESDB_PASSWORD` | PostgreSQL password | No | - |
+
+## Supabase Configuration
+
+### Database Setup
+
+1. **Create Supabase Project**:
+   - Go to [supabase.com](https://supabase.com)
+   - Create a new project
+   - Note down the project URL and API keys
+
+2. **Run Migrations**:
+   ```bash
+   # In your Hans Restaurant App directory
+   supabase db reset
+   ```
+
+3. **Configure RLS Policies**:
+   - The migrations automatically set up Row-Level Security
+   - No additional configuration needed
+
+### API Keys
+
+| Key Type | Description | Usage |
+|----------|-------------|-------|
+| `anon` | Public key for client operations | Frontend authentication |
+| `service_role` | Secret key for admin operations | Backend API operations |
+
+## SumUp Configuration
+
+### API Credentials
+
+1. **Get SumUp API Credentials**:
+   - Log in to your SumUp merchant dashboard
+   - Navigate to Settings > API
+   - Generate API Key and Secret
+   - These will be entered through the Hans App UI
+
+2. **Configure Webhook** (Optional):
+   - Set webhook URL: `https://your-domain.com/api/webhooks/sumup`
+   - Set webhook secret: `your-sumup-webhook-secret`
+   - Add webhook secret to Hans App `.env.local`
+
+### Webhook Configuration
+
+| Setting | Value | Description |
+|---------|-------|-------------|
+| Webhook URL | `https://your-domain.com/api/webhooks/sumup` | Endpoint for SumUp webhooks |
+| Webhook Secret | `your-sumup-webhook-secret` | Secret for webhook validation |
+| Events | `transaction.created`, `transaction.updated` | Events to receive |
+
+## Security Best Practices
+
+### Key Generation
+
+#### Encryption Key
+```bash
+# Generate a secure 32-character encryption key
+openssl rand -hex 16
+```
+
+#### Shared Secret
+```bash
+# Generate a secure shared secret
+openssl rand -base64 32
+```
+
+#### Password Generation
+```bash
+# Generate a secure password
+openssl rand -base64 32
+```
+
+### Key Storage
+
+1. **Environment Variables**: Store all keys in environment variables
+2. **Never Commit**: Never commit keys to version control
+3. **Secure Storage**: Use secure password managers for production
+4. **Rotation**: Regularly rotate keys and secrets
+
+### Access Control
+
+1. **Least Privilege**: Only grant necessary permissions
+2. **Regular Audits**: Regularly audit access and permissions
+3. **Monitoring**: Monitor for unauthorized access attempts
+4. **Backup**: Keep secure backups of critical keys
+
+## Troubleshooting
+
+### Common Issues
+
+#### Environment Variables Not Loading
+```bash
+# Check if .env.local exists
+ls -la .env.local
+
+# Verify environment variables are loaded
+echo $ENCRYPTION_KEY
+```
+
+#### n8n Authentication Failures
+```bash
+# Verify shared secret matches
+echo $N8N_SHARED_SECRET
+
+# Check API URL is accessible
+curl -H "Authorization: Bearer $N8N_SHARED_SECRET" $HANS_API_URL/merchant-codes/credentials
+```
+
+#### Supabase Connection Issues
+```bash
+# Test Supabase connection
+curl -H "apikey: $NEXT_PUBLIC_SUPABASE_ANON_KEY" $NEXT_PUBLIC_SUPABASE_URL/rest/v1/
+```
+
+### Validation Scripts
+
+#### Validate Hans App Configuration
+```bash
+#!/bin/bash
+# validate-hans-config.sh
+
+echo "Validating Hans Restaurant App configuration..."
+
+# Check required environment variables
+required_vars=(
+  "NEXT_PUBLIC_SUPABASE_URL"
+  "NEXT_PUBLIC_SUPABASE_ANON_KEY"
+  "SUPABASE_SERVICE_ROLE_KEY"
+  "ENCRYPTION_KEY"
+  "N8N_SHARED_SECRET"
+)
+
+for var in "${required_vars[@]}"; do
+  if [ -z "${!var}" ]; then
+    echo "❌ Missing required environment variable: $var"
+    exit 1
+  else
+    echo "✅ $var is set"
+  fi
+done
+
+# Validate encryption key length
+if [ ${#ENCRYPTION_KEY} -ne 32 ]; then
+  echo "❌ ENCRYPTION_KEY must be exactly 32 characters"
+  exit 1
+else
+  echo "✅ ENCRYPTION_KEY has correct length"
+fi
+
+echo "✅ All configuration validated successfully!"
+```
+
+#### Validate n8n Configuration
+```bash
+#!/bin/bash
+# validate-n8n-config.sh
+
+echo "Validating n8n configuration..."
+
+# Check required environment variables
+required_vars=(
+  "HANS_API_URL"
+  "N8N_SHARED_SECRET"
+)
+
+for var in "${required_vars[@]}"; do
+  if [ -z "${!var}" ]; then
+    echo "❌ Missing required environment variable: $var"
+    exit 1
+  else
+    echo "✅ $var is set"
+  fi
+done
+
+# Test Hans App API connection
+if curl -s -H "Authorization: Bearer $N8N_SHARED_SECRET" "$HANS_API_URL/merchant-codes/credentials" > /dev/null; then
+  echo "✅ Hans App API is accessible"
+else
+  echo "❌ Cannot connect to Hans App API"
+  exit 1
+fi
+
+echo "✅ All n8n configuration validated successfully!"
+```
+
+## Production Deployment
+
+### Environment Variables in Production
+
+#### Vercel Deployment
+```bash
+# Add environment variables in Vercel dashboard
+# Settings > Environment Variables
+
+NEXT_PUBLIC_SUPABASE_URL=https://your-project.supabase.co
+NEXT_PUBLIC_SUPABASE_ANON_KEY=eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...
+SUPABASE_SERVICE_ROLE_KEY=eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...
+ENCRYPTION_KEY=your-32-character-encryption-key-here
+N8N_SHARED_SECRET=your-shared-secret-for-n8n
+SUMUP_WEBHOOK_SECRET=your-sumup-webhook-secret
+```
+
+#### Docker Deployment
+```bash
+# Create .env file for Docker
+cat > .env << EOF
+NEXT_PUBLIC_SUPABASE_URL=https://your-project.supabase.co
+NEXT_PUBLIC_SUPABASE_ANON_KEY=eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...
+SUPABASE_SERVICE_ROLE_KEY=eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...
+ENCRYPTION_KEY=your-32-character-encryption-key-here
+N8N_SHARED_SECRET=your-shared-secret-for-n8n
+SUMUP_WEBHOOK_SECRET=your-sumup-webhook-secret
+EOF
+
+# Run with Docker
+docker run --env-file .env -p 3000:3000 hans-restaurant-app
+```
+
+---
+
+*Last updated: 2025-01-22*
