@@ -3,10 +3,11 @@
 import { useState, useEffect } from 'react'
 import { createBrowserClient } from '@supabase/ssr'
 import { useRouter } from 'next/navigation'
+import Link from 'next/link'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
-import { Clock, Calendar, MapPin, User } from 'lucide-react'
+import { Clock, Calendar, MapPin, User, ArrowLeft, Plus, Edit, Trash2 } from 'lucide-react'
 import { LogoutButton } from '@/components/logout-button'
 
 interface Shift {
@@ -26,10 +27,18 @@ interface User {
   role: 'owner' | 'manager' | 'staff'
 }
 
+interface UserData {
+  id: string
+  name: string
+  email: string
+  role: 'owner' | 'manager' | 'staff'
+}
+
 export default function ShiftsPage() {
   const [shifts, setShifts] = useState<Shift[]>([])
-  const [user, setUser] = useState<User | null>(null)
+  const [user, setUser] = useState<UserData | null>(null)
   const [isLoading, setIsLoading] = useState(true)
+  const [showCreateForm, setShowCreateForm] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const supabase = createBrowserClient(
     process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -160,26 +169,64 @@ export default function ShiftsPage() {
 
   return (
     <div className="space-y-6">
-      {/* Header */}
+      {/* Navigation Header */}
       <div className="flex items-center justify-between">
-        <div>
-          <h1 className="text-3xl font-bold tracking-tight">My Shifts</h1>
-          <p className="text-muted-foreground">
-            View your upcoming and past shifts
-          </p>
-          {user && (
-            <p className="text-sm text-gray-600 mt-1">
-              Logged in as {user.name} ({user.role})
+        <div className="flex items-center gap-4">
+          <Button variant="outline" asChild>
+            <Link href="/dashboard">
+              <ArrowLeft className="mr-2 h-4 w-4" />
+              Back to Dashboard
+            </Link>
+          </Button>
+          <div>
+            <h1 className="text-3xl font-bold tracking-tight">
+              {user?.role === 'manager' || user?.role === 'owner' ? 'Shift Management' : 'My Shifts'}
+            </h1>
+            <p className="text-muted-foreground">
+              {user?.role === 'manager' || user?.role === 'owner' 
+                ? 'Manage and schedule employee shifts' 
+                : 'View your upcoming and past shifts'
+              }
             </p>
-          )}
+            {user && (
+              <p className="text-sm text-gray-600 mt-1">
+                Logged in as {user.name} ({user.role})
+              </p>
+            )}
+          </div>
         </div>
         <div className="flex items-center gap-2">
           <Badge variant="outline">
             {user?.role || 'User'}
           </Badge>
+          {(user?.role === 'manager' || user?.role === 'owner') && (
+            <Button onClick={() => setShowCreateForm(!showCreateForm)}>
+              <Plus className="mr-2 h-4 w-4" />
+              {showCreateForm ? 'Cancel' : 'Add Shift'}
+            </Button>
+          )}
           <LogoutButton />
         </div>
       </div>
+
+      {/* Create Shift Form for Managers */}
+      {(user?.role === 'manager' || user?.role === 'owner') && showCreateForm && (
+        <Card>
+          <CardHeader>
+            <CardTitle>Create New Shift</CardTitle>
+            <CardDescription>
+              Schedule a new shift for an employee
+            </CardDescription>
+          </CardHeader>
+          <CardContent>
+            <div className="text-center py-8 text-muted-foreground">
+              <Calendar className="h-12 w-12 mx-auto mb-4 opacity-50" />
+              <p>Shift creation form will be implemented here.</p>
+              <p className="text-sm">This will include employee selection, date/time pickers, and position assignment.</p>
+            </div>
+          </CardContent>
+        </Card>
+      )}
 
       {/* Shifts List */}
       <div className="space-y-4">
@@ -207,9 +254,21 @@ export default function ShiftsPage() {
                         {formatDate(shift.date)}
                       </CardDescription>
                     </div>
-                    <Badge variant={shiftStatus.color === 'green' ? 'default' : 'secondary'}>
-                      {shiftStatus.status}
-                    </Badge>
+                    <div className="flex items-center gap-2">
+                      <Badge variant={shiftStatus.color === 'green' ? 'default' : 'secondary'}>
+                        {shiftStatus.status}
+                      </Badge>
+                      {(user?.role === 'manager' || user?.role === 'owner') && (
+                        <div className="flex items-center gap-1">
+                          <Button variant="ghost" size="sm">
+                            <Edit className="h-4 w-4" />
+                          </Button>
+                          <Button variant="ghost" size="sm">
+                            <Trash2 className="h-4 w-4" />
+                          </Button>
+                        </div>
+                      )}
+                    </div>
                   </div>
                 </CardHeader>
                 <CardContent>
