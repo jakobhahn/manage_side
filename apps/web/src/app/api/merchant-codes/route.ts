@@ -6,29 +6,26 @@ const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!
 const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY!
 
 // Encryption configuration
-const ENCRYPTION_ALGORITHM = 'aes-256-gcm'
-const ENCRYPTION_KEY = process.env.ENCRYPTION_KEY || 'your-32-character-secret-key-here' // In production, use a secure key
+const ENCRYPTION_ALGORITHM = 'aes-256-cbc'
+const ENCRYPTION_KEY = process.env.ENCRYPTION_KEY || '0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef' // 64 hex chars = 32 bytes
 
 // Encryption functions
 function encrypt(text: string): { encrypted: string; iv: string; tag: string } {
   const iv = crypto.randomBytes(16)
-  const cipher = crypto.createCipher(ENCRYPTION_ALGORITHM, ENCRYPTION_KEY)
+  const cipher = crypto.createCipheriv(ENCRYPTION_ALGORITHM, Buffer.from(ENCRYPTION_KEY, 'hex'), iv)
   
   let encrypted = cipher.update(text, 'utf8', 'hex')
   encrypted += cipher.final('hex')
   
-  const tag = cipher.getAuthTag()
-  
   return {
     encrypted,
     iv: iv.toString('hex'),
-    tag: tag.toString('hex')
+    tag: '' // Not used for CBC mode
   }
 }
 
 function decrypt(encrypted: string, iv: string, tag: string): string {
-  const decipher = crypto.createDecipher(ENCRYPTION_ALGORITHM, ENCRYPTION_KEY)
-  decipher.setAuthTag(Buffer.from(tag, 'hex'))
+  const decipher = crypto.createDecipheriv(ENCRYPTION_ALGORITHM, Buffer.from(ENCRYPTION_KEY, 'hex'), Buffer.from(iv, 'hex'))
   
   let decrypted = decipher.update(encrypted, 'hex', 'utf8')
   decrypted += decipher.final('utf8')
