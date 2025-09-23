@@ -6,6 +6,27 @@ This document describes the overall architecture of the Hans Restaurant Manageme
 
 The Hans Restaurant Management Platform is built as a comprehensive, modular SaaS system with the following key components:
 
+### Current Implementation Status
+
+**✅ Implemented Features:**
+- Multi-tenant architecture with Row-Level Security (RLS)
+- Role-based access control (Owner, Manager, Staff)
+- Organization registration and user management
+- Revenue analytics with real-time data processing
+- Shift planning with manager editing capabilities
+- Comprehensive API with authentication
+- Responsive PWA with mobile-first design
+
+**🚧 In Development:**
+- Advanced shift management features
+- Inventory management module
+- Time clock with GPS verification
+
+**📋 Planned Features:**
+- Menu management
+- Advanced reporting
+- Subscription billing system
+
 ```mermaid
 graph TB
     subgraph "Payment Integration"
@@ -72,261 +93,309 @@ graph TB
 ## Technology Stack
 
 ### Frontend
-- **Next.js 15** - React framework with App Router
-- **TypeScript** - Type-safe development
+- **Next.js 15** - React framework with App Router and Server Components
+- **React 19** - Latest React with concurrent features
+- **TypeScript** - Strict type checking and development
 - **Tailwind CSS** - Utility-first CSS framework
-- **shadcn/ui** - Component library
-- **React Native** - Mobile app (planned)
+- **shadcn/ui** - Modern component library
+- **PWA** - Progressive Web App capabilities
+- **Responsive Design** - Mobile-first approach
 
-### Backend
-- **Next.js API Routes** - Serverless API endpoints
-- **Supabase** - Backend-as-a-Service
-  - PostgreSQL database
-  - Authentication
-  - Real-time subscriptions
-  - File storage
-- **n8n** - Workflow automation
+### Backend & Database
+- **Next.js API Routes** - Serverless API endpoints with authentication
+- **Supabase** - Complete Backend-as-a-Service
+  - **PostgreSQL** - Multi-tenant database with RLS
+  - **Authentication** - JWT-based auth with role management
+  - **Row-Level Security** - Tenant data isolation
+  - **Real-time** - Live data synchronization
+  - **Storage** - File and media management
+  - **Edge Functions** - Serverless compute
+- **n8n** - Self-hosted workflow automation for SumUp integration
 
-### Infrastructure
-- **Vercel** - Hosting and deployment
-- **Turborepo** - Monorepo build system
-- **pnpm** - Package manager
-- **GitHub Actions** - CI/CD pipeline
+### Development & Infrastructure
+- **Turborepo** - Monorepo build system with caching
+- **pnpm** - Fast, disk space efficient package manager
+- **Vercel** - Hosting, deployment, and edge functions
+- **Docker** - Local development with Supabase
+- **GitHub Actions** - CI/CD pipeline (planned)
+- **Cursor AI** - AI-powered development environment
+
+### Security & Monitoring
+- **Row-Level Security (RLS)** - Database-level access control
+- **JWT Authentication** - Secure token-based auth
+- **Role-Based Access Control** - Owner, Manager, Staff permissions
+- **Input Validation** - Zod schema validation
+- **Error Monitoring** - Sentry integration (planned)
+- **Analytics** - PostHog integration (planned)
 
 ## Data Architecture
 
-### Database Schema
+### Multi-Tenant Database Design
+
+The platform uses a multi-tenant architecture with Row-Level Security (RLS) to ensure complete data isolation between organizations. Each restaurant operates in its own secure data environment.
+
+### Current Database Schema
 
 ```mermaid
 erDiagram
-    USERS ||--o{ ORDERS : places
-    USERS ||--o{ RESERVATIONS : makes
-    RESTAURANTS ||--o{ MENU_ITEMS : contains
-    RESTAURANTS ||--o{ TABLES : has
-    ORDERS ||--o{ ORDER_ITEMS : contains
-    ORDER_ITEMS }o--|| MENU_ITEMS : references
-    TABLES ||--o{ ORDERS : serves
-    TABLES ||--o{ RESERVATIONS : reserved_for
+    ORGANIZATIONS ||--o{ USERS : contains
+    ORGANIZATIONS ||--o{ MERCHANT_CODES : has
+    ORGANIZATIONS ||--o{ MODULE_SUBSCRIPTIONS : subscribes
+    ORGANIZATIONS ||--o{ PAYMENT_TRANSACTIONS : receives
+    ORGANIZATIONS ||--o{ REVENUE_ANALYTICS : generates
     
     USERS {
         uuid id PK
-        string email
+        uuid auth_id UK
+        uuid organization_id FK
         string name
-        string role
+        string email UK
+        enum role
+        boolean is_active
+        timestamp last_login
+        timestamp created_at
+        timestamp updated_at
+    }
+    
+    ORGANIZATIONS {
+        uuid id PK
+        string name
+        string slug UK
+        timestamp trial_ends_at
+        timestamp created_at
+        timestamp updated_at
+    }
+    
+    MERCHANT_CODES {
+        uuid id PK
+        uuid organization_id FK
+        string merchant_code
+        string description
+        boolean is_active
         timestamp created_at
     }
     
-    RESTAURANTS {
+    PAYMENT_TRANSACTIONS {
         uuid id PK
-        string name
-        string address
-        json settings
+        uuid organization_id FK
+        string transaction_id
+        decimal amount
+        string currency
+        date transaction_date
+        jsonb raw_data
         timestamp created_at
     }
     
-    MENU_ITEMS {
+    REVENUE_ANALYTICS {
         uuid id PK
-        uuid restaurant_id FK
-        string name
-        text description
-        decimal price
-        string category
-        boolean available
-    }
-    
-    TABLES {
-        uuid id PK
-        uuid restaurant_id FK
-        string number
-        integer capacity
-        string status
-    }
-    
-    ORDERS {
-        uuid id PK
-        uuid user_id FK
-        uuid table_id FK
-        string status
-        decimal total
+        uuid organization_id FK
+        enum period_type
+        date period_start
+        decimal total_revenue
+        integer transaction_count
         timestamp created_at
-    }
-    
-    ORDER_ITEMS {
-        uuid id PK
-        uuid order_id FK
-        uuid menu_item_id FK
-        integer quantity
-        decimal price
-    }
-    
-    RESERVATIONS {
-        uuid id PK
-        uuid user_id FK
-        uuid table_id FK
-        timestamp date_time
-        integer party_size
-        string status
+        timestamp updated_at
     }
 ```
 
-## API Design
+### Row-Level Security (RLS)
 
-### RESTful Endpoints
+All tables implement Row-Level Security policies to ensure data isolation:
 
-```typescript
-// Authentication
-POST   /api/auth/login
-POST   /api/auth/logout
-POST   /api/auth/register
+- **Organizations**: Users can only access their own organization
+- **Users**: Users can only see users within their organization
+- **Payment Transactions**: Isolated by organization_id
+- **Revenue Analytics**: Organization-specific data access
+- **Merchant Codes**: Organization-specific merchant account management
 
-// Menu Management
-GET    /api/menu
-POST   /api/menu
-PUT    /api/menu/:id
-DELETE /api/menu/:id
+### Database Functions
 
-// Order Management
-GET    /api/orders
-POST   /api/orders
-PUT    /api/orders/:id
-GET    /api/orders/:id/items
-
-// Table Management
-GET    /api/tables
-POST   /api/tables
-PUT    /api/tables/:id
-GET    /api/tables/:id/status
-
-// Reservations
-GET    /api/reservations
-POST   /api/reservations
-PUT    /api/reservations/:id
-DELETE /api/reservations/:id
+**Automated Revenue Analytics:**
+```sql
+CREATE OR REPLACE FUNCTION update_revenue_analytics()
+RETURNS TRIGGER AS $$
+-- Automatically updates daily, weekly, and monthly revenue analytics
+-- when new payment transactions are inserted
 ```
 
-### Real-time Features
+**Organization Creation:**
+```sql
+CREATE OR REPLACE FUNCTION create_organization_with_owner(
+    org_name TEXT,
+    org_slug TEXT,
+    owner_email TEXT,
+    owner_name TEXT
+) RETURNS uuid
+-- Creates organization and initial owner user atomically
+```
 
-- **Order Status Updates** - Real-time order tracking
-- **Table Availability** - Live table status updates
-- **Kitchen Notifications** - New order alerts
-- **Reservation Updates** - Real-time booking changes
+## API Architecture
 
-## Security Architecture
+### RESTful API Design
 
-### Authentication & Authorization
+The platform exposes a comprehensive REST API with the following endpoints:
+
+**Authentication:**
+- `POST /api/auth/signup` - User registration
+- `POST /api/auth/logout` - Session termination
+
+**Organizations:**
+- `POST /api/organizations` - Create new organization
+- `GET /api/organizations/me` - Get current organization
+
+**Users:**
+- `GET /api/users` - List organization users
+- `POST /api/users` - Create new user
+- `DELETE /api/users/[id]` - Delete user
+- `POST /api/users/update-login` - Update last login
+
+**Revenue Analytics:**
+- `GET /api/revenue?period=daily|weekly|monthly` - Get revenue data
+
+### Authentication Flow
 
 ```mermaid
 sequenceDiagram
-    participant User
-    participant WebApp
-    participant Supabase
-    participant API
-    
-    User->>WebApp: Login Request
-    WebApp->>Supabase: Authenticate
-    Supabase-->>WebApp: JWT Token
-    WebApp->>API: Request with JWT
-    API->>Supabase: Verify Token
-    Supabase-->>API: User Data
-    API-->>WebApp: Authorized Response
+    participant U as User
+    participant F as Frontend
+    participant A as API
+    participant S as Supabase
+    participant D as Database
+
+    U->>F: Login Request
+    F->>S: Authenticate User
+    S-->>F: JWT Token
+    F->>A: API Request + JWT
+    A->>S: Verify Token
+    S-->>A: User Data
+    A->>D: Query with RLS
+    D-->>A: Filtered Results
+    A-->>F: Response Data
+    F-->>U: UI Update
 ```
 
-### Security Measures
+## Module Architecture
 
-- **JWT Authentication** - Secure token-based auth
-- **Row Level Security (RLS)** - Database-level access control
-- **CORS Configuration** - Cross-origin request security
-- **Input Validation** - Zod schema validation
-- **Rate Limiting** - API request throttling
-- **HTTPS Only** - Encrypted communication
+### Current Modules
+
+**1. User Management Module**
+- Organization registration
+- User creation and management
+- Role-based access control
+- Session management
+
+**2. Revenue Analytics Module**
+- Real-time revenue tracking
+- Daily/weekly/monthly reports
+- Transaction aggregation
+- Performance metrics
+
+**3. Shift Planning Module**
+- Shift creation and management
+- Manager editing capabilities
+- Staff schedule viewing
+- Role-based permissions
+
+### Planned Modules
+
+**4. Inventory Management** (Phase 3)
+- Stock tracking
+- Supplier management
+- Automated reordering
+- Recipe costing
+
+**5. Time Clock Module** (Phase 2)
+- Clock in/out functionality
+- GPS verification
+- Break tracking
+- Payroll integration
+
+**6. Menu Management** (Phase 4)
+- Digital menu creation
+- Dynamic pricing
+- Allergen information
+- Performance analytics
+
+## Security Architecture
+
+### Multi-Layer Security
+
+1. **Network Security**
+   - HTTPS enforcement
+   - CORS configuration
+   - Rate limiting
+
+2. **Application Security**
+   - JWT token validation
+   - Input sanitization
+   - SQL injection prevention
+
+3. **Database Security**
+   - Row-Level Security (RLS)
+   - Encrypted connections
+   - Audit logging
+
+4. **Access Control**
+   - Role-based permissions
+   - Organization isolation
+   - Session management
+
+### Data Privacy
+
+- **GDPR Compliance**: User data protection and right to deletion
+- **Data Isolation**: Complete tenant separation
+- **Encryption**: Data encrypted in transit and at rest
+- **Audit Trail**: Complete activity logging
 
 ## Deployment Architecture
 
-### Environment Strategy
+### Development Environment
 
 ```mermaid
 graph LR
-    subgraph "Development"
-        Dev[Local Development]
-        DevDB[(Local Supabase)]
-    end
-    
-    subgraph "Staging"
-        Staging[Vercel Preview]
-        StagingDB[(Supabase Staging)]
-    end
-    
-    subgraph "Production"
-        Prod[Vercel Production]
-        ProdDB[(Supabase Production)]
-    end
-    
-    Dev --> Staging
-    Staging --> Prod
+    A[Developer] --> B[Local Development]
+    B --> C[Docker Compose]
+    C --> D[Supabase Local]
+    C --> E[Next.js Dev Server]
+    C --> F[n8n Local]
 ```
 
-### CI/CD Pipeline
+### Production Environment
 
-1. **Code Push** - Developer pushes to feature branch
-2. **Pull Request** - Automated checks run
-3. **Preview Deployment** - Vercel creates preview
-4. **Code Review** - Team reviews changes
-5. **Merge to Main** - Production deployment triggered
-6. **Database Migration** - Automated schema updates
+```mermaid
+graph TB
+    A[Users] --> B[Vercel Edge]
+    B --> C[Next.js App]
+    C --> D[Supabase Cloud]
+    D --> E[PostgreSQL]
+    D --> F[Auth Service]
+    D --> G[Storage]
+    
+    H[n8n Cloud] --> I[SumUp API]
+    H --> D
+    
+    J[GitHub] --> K[Vercel Deploy]
+    K --> B
+```
 
-## Performance Considerations
+## Performance & Scalability
 
-### Frontend Optimization
+### Optimization Strategies
 
-- **Code Splitting** - Lazy loading of components
-- **Image Optimization** - Next.js Image component
-- **Caching Strategy** - Static generation where possible
-- **Bundle Analysis** - Regular bundle size monitoring
+- **Database Indexing**: Optimized queries with proper indexes
+- **Caching**: Redis for session and data caching
+- **CDN**: Vercel Edge Network for global performance
+- **Code Splitting**: Dynamic imports for reduced bundle size
+- **Image Optimization**: Next.js automatic image optimization
 
-### Backend Optimization
+### Monitoring & Observability
 
-- **Database Indexing** - Optimized query performance
-- **Connection Pooling** - Efficient database connections
-- **Caching Layer** - Redis for frequently accessed data
-- **CDN Integration** - Global content delivery
+- **Error Tracking**: Sentry for error monitoring
+- **Performance**: Web Vitals and Core Web Vitals
+- **Analytics**: PostHog for user behavior tracking
+- **Uptime**: Health checks and monitoring
+- **Logging**: Structured logging with correlation IDs
 
-## Monitoring & Observability
+---
 
-### Application Monitoring
-
-- **Sentry** - Error tracking and performance monitoring
-- **Vercel Analytics** - Web vitals and user behavior
-- **Supabase Dashboard** - Database performance metrics
-
-### Infrastructure Monitoring
-
-- **Uptime Monitoring** - Health checks and alerts
-- **Log Aggregation** - Centralized logging
-- **Performance Metrics** - Response time tracking
-
-## Future Considerations
-
-### Scalability
-
-- **Microservices Migration** - Break down monolith as needed
-- **Database Sharding** - Horizontal scaling strategy
-- **CDN Expansion** - Global content delivery
-- **Caching Strategy** - Multi-layer caching
-
-### Technology Evolution
-
-- **React Server Components** - Enhanced server-side rendering
-- **Edge Computing** - Vercel Edge Functions
-- **AI Integration** - Smart recommendations and automation
-- **Mobile App** - React Native implementation
-
-## Decision Records
-
-For detailed architectural decisions, see our [Architecture Decision Records (ADRs)](/adr/template).
-
-## Related Documentation
-
-- [Getting Started](/getting-started) - Development setup
-- [Project Tooling](/tooling) - Development tools and workflows
-- [API Reference](/api) - Detailed API documentation
-- [Deployment Guide](/deployment) - Production deployment process
+*Last updated: 2025-01-22*
