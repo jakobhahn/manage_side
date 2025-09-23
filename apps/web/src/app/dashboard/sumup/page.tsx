@@ -18,7 +18,10 @@ import {
   RefreshCw,
   Settings,
   CheckCircle,
-  AlertCircle
+  AlertCircle,
+  Key,
+  Copy,
+  Check
 } from 'lucide-react'
 import { LogoutButton } from '@/components/logout-button'
 
@@ -63,6 +66,8 @@ export default function SumUpPage() {
     api_key: '',
     api_secret: ''
   })
+  const [generatedSalt, setGeneratedSalt] = useState<string>('')
+  const [saltCopied, setSaltCopied] = useState(false)
   const supabase = createBrowserClient(
     process.env.NEXT_PUBLIC_SUPABASE_URL!,
     process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
@@ -236,6 +241,25 @@ export default function SumUpPage() {
     })
   }
 
+  const generateSalt = () => {
+    const salt = crypto.getRandomValues(new Uint8Array(32))
+    const saltHex = Array.from(salt, byte => byte.toString(16).padStart(2, '0')).join('')
+    setGeneratedSalt(saltHex)
+    setSaltCopied(false)
+    // Automatically fill the API secret field with the generated salt
+    setCreateFormData({ ...createFormData, api_secret: saltHex })
+  }
+
+  const copySaltToClipboard = async () => {
+    try {
+      await navigator.clipboard.writeText(generatedSalt)
+      setSaltCopied(true)
+      setTimeout(() => setSaltCopied(false), 2000)
+    } catch (err) {
+      setError('Failed to copy salt to clipboard')
+    }
+  }
+
   const handleCreateMerchantCode = async (e: React.FormEvent) => {
     e.preventDefault()
     
@@ -293,6 +317,7 @@ export default function SumUpPage() {
         api_key: '',
         api_secret: ''
       })
+      setGeneratedSalt('')
       setShowCreateForm(false)
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to create merchant code')
@@ -405,15 +430,54 @@ export default function SumUpPage() {
                   />
                 </div>
                 <div className="space-y-2">
-                  <Label htmlFor="api_secret">API Secret</Label>
-                  <Input
-                    id="api_secret"
-                    type="password"
-                    value={createFormData.api_secret}
-                    onChange={(e) => setCreateFormData({ ...createFormData, api_secret: e.target.value })}
-                    placeholder="Enter SumUp API Secret"
-                    required
-                  />
+                  <Label htmlFor="api_secret">API Secret (Salt)</Label>
+                  <div className="flex gap-2">
+                    <Input
+                      id="api_secret"
+                      type="password"
+                      value={createFormData.api_secret}
+                      onChange={(e) => setCreateFormData({ ...createFormData, api_secret: e.target.value })}
+                      placeholder="Enter SumUp API Secret or generate a salt"
+                      required
+                      className="flex-1"
+                    />
+                    <Button
+                      type="button"
+                      variant="outline"
+                      onClick={generateSalt}
+                      className="px-3"
+                    >
+                      <Key className="h-4 w-4" />
+                    </Button>
+                  </div>
+                  {generatedSalt && (
+                    <div className="space-y-2">
+                      <Label className="text-sm font-medium text-green-600">Generated Salt:</Label>
+                      <div className="flex gap-2">
+                        <Input
+                          value={generatedSalt}
+                          readOnly
+                          className="font-mono text-xs bg-gray-50"
+                        />
+                        <Button
+                          type="button"
+                          variant="outline"
+                          size="sm"
+                          onClick={copySaltToClipboard}
+                          className="px-3"
+                        >
+                          {saltCopied ? (
+                            <Check className="h-4 w-4 text-green-600" />
+                          ) : (
+                            <Copy className="h-4 w-4" />
+                          )}
+                        </Button>
+                      </div>
+                      <p className="text-xs text-muted-foreground">
+                        Click the key icon to generate a strong salt, then copy it to use as your API Secret
+                      </p>
+                    </div>
+                  )}
                 </div>
               </div>
               <div className="flex justify-end gap-2">
