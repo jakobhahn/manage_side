@@ -32,6 +32,7 @@ interface MerchantCode {
   description: string
   is_active: boolean
   created_at: string
+  organization_id: string
   sync_status: 'active' | 'inactive' | 'error' | 'syncing'
   last_sync_at: string | null
   webhook_url: string | null

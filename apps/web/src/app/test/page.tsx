@@ -9,7 +9,6 @@ import { Alert, AlertDescription } from '@/components/ui/alert'
 import { Badge } from '@/components/ui/badge'
 import { 
   Building2, 
-  Users, 
   DollarSign, 
   TrendingUp,
   Clock,

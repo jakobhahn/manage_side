@@ -22,8 +22,7 @@ import {
   Trash2,
   ArrowLeft,
   Key,
-  Save,
-  X
+  Save
 } from 'lucide-react'
 import {
   DropdownMenu,
@@ -45,7 +44,7 @@ interface User {
   id: string
   email: string
   name: string
-  role: 'owner' | 'manager' | 'staff' | 'admin'
+  role: 'owner' | 'manager' | 'staff'
   is_active: boolean
   last_login: string | null
   created_at: string
@@ -79,7 +78,6 @@ export default function UsersPage() {
   const [editingUser, setEditingUser] = useState<User | null>(null)
   const [deletingUser, setDeletingUser] = useState<User | null>(null)
   const [resettingUser, setResettingUser] = useState<User | null>(null)
-  const [isAuthenticated, setIsAuthenticated] = useState(false)
   const supabase = createBrowserClient(
     process.env.NEXT_PUBLIC_SUPABASE_URL!,
     process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!

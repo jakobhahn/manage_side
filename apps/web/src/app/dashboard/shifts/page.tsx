@@ -7,7 +7,7 @@ import Link from 'next/link'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
-import { Clock, Calendar, MapPin, User, ArrowLeft, Plus, Edit, Trash2 } from 'lucide-react'
+import { Clock, Calendar, MapPin, ArrowLeft, Plus, Edit, Trash2 } from 'lucide-react'
 import { LogoutButton } from '@/components/logout-button'
 
 interface Shift {
