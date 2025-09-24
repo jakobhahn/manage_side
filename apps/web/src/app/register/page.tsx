@@ -2,12 +2,8 @@
 
 import { useState } from 'react'
 import { useRouter } from 'next/navigation'
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
-import { Button } from '@/components/ui/button'
-import { Input } from '@/components/ui/input'
-import { Label } from '@/components/ui/label'
-import { Alert, AlertDescription } from '@/components/ui/alert'
 import { Loader2, Building2, User, Mail, Globe } from 'lucide-react'
+import { createClient } from '@supabase/supabase-js'
 
 interface RegisterFormData {
   organizationName: string
@@ -22,6 +18,10 @@ export default function RegisterPage() {
   const router = useRouter()
   const [isLoading, setIsLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const supabase = createClient(
+    process.env.NEXT_PUBLIC_SUPABASE_URL!,
+    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
+  )
   const [formData, setFormData] = useState<RegisterFormData>({
     organizationName: '',
     organizationSlug: '',
@@ -129,6 +129,14 @@ export default function RegisterPage() {
         throw new Error(errorMessage)
       }
 
+      // Set the session in Supabase client
+      if (authData.session) {
+        await supabase.auth.setSession({
+          access_token: authData.session.access_token,
+          refresh_token: authData.session.refresh_token,
+        })
+      }
+
       // Redirect to dashboard
       router.push('/dashboard')
     } catch (err) {
@@ -139,143 +147,145 @@ export default function RegisterPage() {
   }
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-blue-50 to-indigo-100 flex items-center justify-center p-4">
-      <Card className="w-full max-w-md">
-        <CardHeader className="text-center">
-          <div className="mx-auto w-12 h-12 bg-blue-600 rounded-lg flex items-center justify-center mb-4">
-            <Building2 className="w-6 h-6 text-white" />
+    <div className="min-h-screen bg-gray-50 flex items-center justify-center p-4">
+      <div className="w-full max-w-md">
+        <div className="bg-white rounded-2xl flat-shadow-lg p-8">
+          <div className="text-center mb-8">
+            <div className="mx-auto w-16 h-16 bg-gray-900 rounded-2xl flex items-center justify-center mb-6">
+              <Building2 className="w-8 h-8 text-white" />
+            </div>
+            <h1 className="text-2xl font-semibold text-gray-900 mb-2">Create Your Restaurant</h1>
+            <p className="text-gray-600 text-sm">
+              Set up your organization and become the admin
+            </p>
           </div>
-          <CardTitle className="text-2xl font-bold">Create Your Restaurant</CardTitle>
-          <CardDescription>
-            Set up your organization and become the admin
-          </CardDescription>
-        </CardHeader>
-        
-        <CardContent>
-          <form onSubmit={handleSubmit} className="space-y-4">
+          
+          <form onSubmit={handleSubmit} className="space-y-6">
             {error && (
-              <Alert variant="destructive">
-                <AlertDescription>{error}</AlertDescription>
-              </Alert>
+              <div className="bg-red-50 border border-red-200 rounded-xl p-4">
+                <p className="text-red-800 text-sm">{error}</p>
+              </div>
             )}
 
             <div className="space-y-2">
-              <Label htmlFor="organizationName">Restaurant Name</Label>
+              <label htmlFor="organizationName" className="text-sm font-medium text-gray-700">Restaurant Name</label>
               <div className="relative">
-                <Building2 className="absolute left-3 top-3 h-4 w-4 text-gray-400" />
-                <Input
+                <Building2 className="absolute left-4 top-1/2 transform -translate-y-1/2 h-4 w-4 text-gray-400" />
+                <input
                   id="organizationName"
                   type="text"
                   placeholder="My Restaurant"
                   value={formData.organizationName}
                   onChange={(e) => handleInputChange('organizationName', e.target.value)}
-                  className="pl-10"
+                  className="w-full pl-12 pr-4 py-3 border border-gray-200 rounded-xl focus:ring-2 focus:ring-gray-900 focus:border-transparent transition-all duration-200 text-sm"
                   required
                 />
               </div>
             </div>
 
             <div className="space-y-2">
-              <Label htmlFor="organizationSlug">Organization URL</Label>
+              <label htmlFor="organizationSlug" className="text-sm font-medium text-gray-700">Organization URL</label>
               <div className="relative">
-                <Globe className="absolute left-3 top-3 h-4 w-4 text-gray-400" />
-                <Input
+                <Globe className="absolute left-4 top-1/2 transform -translate-y-1/2 h-4 w-4 text-gray-400" />
+                <input
                   id="organizationSlug"
                   type="text"
                   placeholder="my-restaurant"
                   value={formData.organizationSlug}
                   onChange={(e) => handleInputChange('organizationSlug', e.target.value)}
-                  className="pl-10"
+                  className="w-full pl-12 pr-4 py-3 border border-gray-200 rounded-xl focus:ring-2 focus:ring-gray-900 focus:border-transparent transition-all duration-200 text-sm"
                   required
                 />
               </div>
-              <p className="text-xs text-gray-500">
-                This will be your unique URL: hans-app.com/{formData.organizationSlug || 'your-slug'}
+              <p className="text-xs text-gray-500 break-words">
+                hans-app.com/{formData.organizationSlug || 'your-slug'}
               </p>
             </div>
 
             <div className="space-y-2">
-              <Label htmlFor="ownerName">Your Name</Label>
+              <label htmlFor="ownerName" className="text-sm font-medium text-gray-700">Your Name</label>
               <div className="relative">
-                <User className="absolute left-3 top-3 h-4 w-4 text-gray-400" />
-                <Input
+                <User className="absolute left-4 top-1/2 transform -translate-y-1/2 h-4 w-4 text-gray-400" />
+                <input
                   id="ownerName"
                   type="text"
                   placeholder="John Doe"
                   value={formData.ownerName}
                   onChange={(e) => handleInputChange('ownerName', e.target.value)}
-                  className="pl-10"
+                  className="w-full pl-12 pr-4 py-3 border border-gray-200 rounded-xl focus:ring-2 focus:ring-gray-900 focus:border-transparent transition-all duration-200 text-sm"
                   required
                 />
               </div>
             </div>
 
             <div className="space-y-2">
-              <Label htmlFor="ownerEmail">Email Address</Label>
+              <label htmlFor="ownerEmail" className="text-sm font-medium text-gray-700">Email Address</label>
               <div className="relative">
-                <Mail className="absolute left-3 top-3 h-4 w-4 text-gray-400" />
-                <Input
+                <Mail className="absolute left-4 top-1/2 transform -translate-y-1/2 h-4 w-4 text-gray-400" />
+                <input
                   id="ownerEmail"
                   type="email"
                   placeholder="john@myrestaurant.com"
                   value={formData.ownerEmail}
                   onChange={(e) => handleInputChange('ownerEmail', e.target.value)}
-                  className="pl-10"
+                  className="w-full pl-12 pr-4 py-3 border border-gray-200 rounded-xl focus:ring-2 focus:ring-gray-900 focus:border-transparent transition-all duration-200 text-sm"
                   required
                 />
               </div>
             </div>
 
             <div className="space-y-2">
-              <Label htmlFor="password">Password</Label>
-              <Input
+              <label htmlFor="password" className="text-sm font-medium text-gray-700">Password</label>
+              <input
                 id="password"
                 type="password"
                 placeholder="••••••••"
                 value={formData.password}
                 onChange={(e) => handleInputChange('password', e.target.value)}
+                className="w-full px-4 py-3 border border-gray-200 rounded-xl focus:ring-2 focus:ring-gray-900 focus:border-transparent transition-all duration-200 text-sm"
                 required
               />
             </div>
 
             <div className="space-y-2">
-              <Label htmlFor="confirmPassword">Confirm Password</Label>
-              <Input
+              <label htmlFor="confirmPassword" className="text-sm font-medium text-gray-700">Confirm Password</label>
+              <input
                 id="confirmPassword"
                 type="password"
                 placeholder="••••••••"
                 value={formData.confirmPassword}
                 onChange={(e) => handleInputChange('confirmPassword', e.target.value)}
+                className="w-full px-4 py-3 border border-gray-200 rounded-xl focus:ring-2 focus:ring-gray-900 focus:border-transparent transition-all duration-200 text-sm"
                 required
               />
             </div>
 
-            <Button
+            <button
               type="submit"
-              className="w-full"
+              className="w-full bg-gray-900 text-white py-3 px-4 rounded-xl font-medium text-sm hover:bg-gray-800 focus:ring-2 focus:ring-gray-900 focus:ring-offset-2 transition-all duration-200 disabled:opacity-50 disabled:cursor-not-allowed"
               disabled={isLoading}
             >
               {isLoading ? (
-                <>
+                <div className="flex items-center justify-center">
                   <Loader2 className="mr-2 h-4 w-4 animate-spin" />
                   Creating Organization...
-                </>
+                </div>
               ) : (
                 'Create Organization'
               )}
-            </Button>
+            </button>
           </form>
 
-          <div className="mt-6 text-center">
+          <div className="mt-8 text-center">
             <p className="text-sm text-gray-600">
               Already have an account?{' '}
-              <a href="/login" className="text-blue-600 hover:underline">
+              <a href="/login" className="text-gray-900 font-medium hover:underline">
                 Sign in
               </a>
             </p>
           </div>
-        </CardContent>
-      </Card>
+        </div>
+      </div>
     </div>
   )
 }

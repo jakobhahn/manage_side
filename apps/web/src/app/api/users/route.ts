@@ -66,7 +66,7 @@ export async function GET(request: NextRequest) {
       )
     }
 
-    return NextResponse.json(users || [])
+    return NextResponse.json({ users: users || [] })
   } catch (error) {
     console.error('Users fetch error:', error)
     return NextResponse.json(

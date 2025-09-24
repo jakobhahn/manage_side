@@ -1,16 +1,9 @@
 'use client'
 
 import { useState, useEffect } from 'react'
-import { createBrowserClient } from '@supabase/ssr'
+import { createClient } from '@supabase/supabase-js'
 import { useRouter } from 'next/navigation'
 import Link from 'next/link'
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
-import { Button } from '@/components/ui/button'
-import { Input } from '@/components/ui/input'
-import { Label } from '@/components/ui/label'
-import { Alert, AlertDescription } from '@/components/ui/alert'
-import { Badge } from '@/components/ui/badge'
-import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group'
 import { 
   Loader2, 
   ArrowLeft,
@@ -22,9 +15,13 @@ import {
   AlertCircle,
   Key,
   Copy,
-  Check
+  Check,
+  LogOut,
+  Plus
 } from 'lucide-react'
-import { LogoutButton } from '@/components/logout-button'
+import { Label } from '@/components/ui/label'
+import { Input } from '@/components/ui/input'
+import { Button } from '@/components/ui/button'
 
 interface MerchantCode {
   id: string
@@ -79,7 +76,7 @@ export default function SumUpPage() {
   })
   const [generatedSalt, setGeneratedSalt] = useState<string>('')
   const [saltCopied, setSaltCopied] = useState(false)
-  const supabase = createBrowserClient(
+  const supabase = createClient(
     process.env.NEXT_PUBLIC_SUPABASE_URL!,
     process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
   )
@@ -353,129 +350,232 @@ export default function SumUpPage() {
 
   if (isLoading) {
     return (
-      <div className="flex items-center justify-center h-64">
-        <Loader2 className="h-8 w-8 animate-spin" />
+      <div className="min-h-screen bg-gray-50 flex items-center justify-center">
+        <div className="flex items-center space-x-2">
+          <Loader2 className="h-6 w-6 animate-spin text-gray-600" />
+          <span className="text-gray-600">Loading SumUp integration...</span>
+        </div>
       </div>
     )
   }
 
   return (
-    <div className="space-y-6">
-      {/* Navigation Header */}
-      <div className="flex items-center justify-between">
-        <div className="flex items-center gap-4">
-          <Button variant="outline" asChild>
-            <Link href="/dashboard">
-              <ArrowLeft className="mr-2 h-4 w-4" />
-              Back to Dashboard
-            </Link>
-          </Button>
-          <div>
-            <h1 className="text-3xl font-bold tracking-tight">SumUp Integration</h1>
-            <p className="text-muted-foreground">
-              Manage payment data synchronization and merchant accounts
-            </p>
+    <div className="min-h-screen bg-gray-50">
+      {/* Header - Full Width */}
+      <div className="bg-white border-b border-gray-200">
+        <div className="px-4 sm:px-6 lg:px-8">
+          <div className="py-4">
+            {/* Mobile Layout */}
+            <div className="block sm:hidden">
+              <div className="mb-4">
+                <Link 
+                  href="/dashboard" 
+                  className="flex items-center space-x-2 text-gray-600 hover:text-gray-900 transition-colors mb-2"
+                >
+                  <ArrowLeft className="h-4 w-4" />
+                  <span className="text-sm font-medium">Back to Dashboard</span>
+                </Link>
+                <h1 className="text-xl font-bold text-gray-900">SumUp Integration</h1>
+                <p className="text-sm text-gray-600 mt-1">Manage payment data synchronization and merchant accounts</p>
+              </div>
+              
+              <div className="flex items-center justify-between">
+                <button
+                  onClick={fetchMerchantCodes}
+                  className="bg-gray-100 text-gray-700 px-3 py-2 rounded-xl text-sm font-medium hover:bg-gray-200 transition-colors flex items-center space-x-2"
+                >
+                  <RefreshCw className="h-4 w-4" />
+                  <span className="hidden xs:inline">Refresh</span>
+                </button>
+                
+                <div className="flex items-center space-x-2">
+                  <Link href="/dashboard/settings">
+                    <button className="bg-gray-900 text-white p-2 rounded-xl hover:bg-gray-800 transition-colors">
+                      <Settings className="h-4 w-4" />
+                    </button>
+                  </Link>
+                  
+                  <button 
+                    onClick={async () => {
+                      await supabase.auth.signOut()
+                      router.push('/login')
+                    }}
+                    className="bg-red-600 text-white p-2 rounded-xl hover:bg-red-700 transition-colors"
+                  >
+                    <LogOut className="h-4 w-4" />
+                  </button>
+                </div>
+              </div>
+            </div>
+            
+            {/* Desktop Layout */}
+            <div className="hidden sm:flex items-center justify-between">
+              <div className="flex items-center space-x-4">
+                <Link 
+                  href="/dashboard" 
+                  className="flex items-center space-x-2 text-gray-600 hover:text-gray-900 transition-colors"
+                >
+                  <ArrowLeft className="h-4 w-4" />
+                  <span className="text-sm font-medium">Back to Dashboard</span>
+                </Link>
+              </div>
+              
+              <div className="flex items-center space-x-3">
+                <button
+                  onClick={fetchMerchantCodes}
+                  className="bg-gray-100 text-gray-700 px-4 py-2 rounded-xl text-sm font-medium hover:bg-gray-200 transition-colors flex items-center space-x-2"
+                >
+                  <RefreshCw className="h-4 w-4" />
+                  <span>Refresh</span>
+                </button>
+                
+                <Link href="/dashboard/settings">
+                  <button className="bg-gray-900 text-white p-2 rounded-xl hover:bg-gray-800 transition-colors">
+                    <Settings className="h-4 w-4" />
+                  </button>
+                </Link>
+                
+                <button 
+                  onClick={async () => {
+                    await supabase.auth.signOut()
+                    router.push('/login')
+                  }}
+                  className="bg-red-600 text-white p-2 rounded-xl hover:bg-red-700 transition-colors"
+                >
+                  <LogOut className="h-4 w-4" />
+                </button>
+              </div>
+            </div>
           </div>
-        </div>
-        <div className="flex items-center gap-2">
-          <Button variant="outline" onClick={fetchMerchantCodes}>
-            <RefreshCw className="mr-2 h-4 w-4" />
-            Refresh
-          </Button>
-          <LogoutButton />
         </div>
       </div>
 
-      {error && (
-        <Alert variant="destructive">
-          <AlertCircle className="h-4 w-4" />
-          <AlertDescription>{error}</AlertDescription>
-        </Alert>
-      )}
+      {/* Main Content */}
+      <div className="px-4 sm:px-6 lg:px-8 py-8">
+        {/* Title - Full Width */}
+        <div className="mb-8">
+          <h1 className="text-3xl font-bold text-gray-900 mb-2">SumUp Integration</h1>
+          <p className="text-gray-600">Manage payment data synchronization and merchant accounts</p>
+        </div>
 
-      {success && (
-        <Alert>
-          <CheckCircle className="h-4 w-4" />
-          <AlertDescription>{success}</AlertDescription>
-        </Alert>
-      )}
-
-      {/* Add Merchant Code Form */}
-      <Card>
-        <CardHeader>
-          <CardTitle className="flex items-center justify-between">
-            <div className="flex items-center gap-2">
-              <CreditCard className="h-5 w-5" />
-              Add New Merchant Account
+        {error && (
+          <div className="mb-6 bg-red-50 border border-red-200 rounded-xl p-4">
+            <div className="flex items-center space-x-2">
+              <AlertCircle className="h-4 w-4 text-red-600" />
+              <p className="text-red-800 text-sm">{error}</p>
             </div>
-            <Button 
-              variant="outline" 
-              onClick={() => setShowCreateForm(!showCreateForm)}
-            >
-              {showCreateForm ? 'Cancel' : 'Add Account'}
-            </Button>
-          </CardTitle>
-          <CardDescription>
-            Add a new SumUp merchant account with API credentials
-          </CardDescription>
-        </CardHeader>
-        {showCreateForm && (
-          <CardContent>
-            <form onSubmit={handleCreateMerchantCode} className="space-y-6">
-              {/* Integration Type Selection */}
-              <div className="space-y-4">
-                <Label className="text-base font-medium">Integration Type</Label>
-                <RadioGroup
-                  value={createFormData.integration_type}
-                  onValueChange={(value: 'oauth' | 'api_key') => 
-                    setCreateFormData({ ...createFormData, integration_type: value })
-                  }
-                  className="grid grid-cols-1 md:grid-cols-2 gap-4"
-                >
-                  <div className="flex items-center space-x-2 p-4 border rounded-lg">
-                    <RadioGroupItem value="api_key" id="api_key" />
-                    <Label htmlFor="api_key" className="flex-1 cursor-pointer">
-                      <div className="font-medium">API Key Integration</div>
-                      <div className="text-sm text-muted-foreground">
-                        Use SumUp API keys for direct integration
-                      </div>
-                    </Label>
-                  </div>
-                  <div className="flex items-center space-x-2 p-4 border rounded-lg">
-                    <RadioGroupItem value="oauth" id="oauth" />
-                    <Label htmlFor="oauth" className="flex-1 cursor-pointer">
-                      <div className="font-medium">OAuth Integration</div>
-                      <div className="text-sm text-muted-foreground">
-                        Use OAuth for secure, token-based access
-                      </div>
-                    </Label>
-                  </div>
-                </RadioGroup>
-              </div>
+          </div>
+        )}
 
-              {/* Basic Information */}
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                <div className="space-y-2">
-                  <Label htmlFor="merchant_code">Merchant Code</Label>
-                  <Input
-                    id="merchant_code"
-                    value={createFormData.merchant_code}
-                    onChange={(e) => setCreateFormData({ ...createFormData, merchant_code: e.target.value })}
-                    placeholder="e.g., 123456789"
-                    required
-                  />
-                </div>
-                <div className="space-y-2">
-                  <Label htmlFor="description">Description</Label>
-                  <Input
-                    id="description"
-                    value={createFormData.description}
-                    onChange={(e) => setCreateFormData({ ...createFormData, description: e.target.value })}
-                    placeholder="e.g., Main Restaurant POS"
-                    required
-                  />
-                </div>
+        {success && (
+          <div className="mb-6 bg-green-50 border border-green-200 rounded-xl p-4">
+            <div className="flex items-center space-x-2">
+              <CheckCircle className="h-4 w-4 text-green-600" />
+              <p className="text-green-800 text-sm">{success}</p>
+            </div>
+          </div>
+        )}
+
+        {/* Add Merchant Code Form */}
+        <div className="bg-white rounded-2xl flat-shadow-lg overflow-hidden mb-8">
+          <div className="px-6 py-4 border-b border-gray-200">
+            <div className="flex items-center justify-between">
+              <div>
+                <h2 className="text-lg font-semibold text-gray-900">Add New Merchant Account</h2>
+                <p className="text-sm text-gray-600">Add a new SumUp merchant account with API credentials</p>
               </div>
+              <button 
+                onClick={() => setShowCreateForm(!showCreateForm)}
+                className="bg-gray-900 text-white px-4 py-2 rounded-xl text-sm font-medium hover:bg-gray-800 transition-colors flex items-center space-x-2"
+              >
+                <Plus className="h-4 w-4" />
+                <span>{showCreateForm ? 'Cancel' : 'Add Account'}</span>
+              </button>
+            </div>
+          </div>
+          {showCreateForm && (
+            <div className="p-6">
+              <form onSubmit={handleCreateMerchantCode} className="space-y-6">
+                {/* Integration Type Selection */}
+                <div className="space-y-4">
+                  <label className="block text-sm font-medium text-gray-700">Integration Type</label>
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <div 
+                      className={`p-4 border rounded-xl cursor-pointer transition-colors ${
+                        createFormData.integration_type === 'api_key' 
+                          ? 'border-gray-900 bg-gray-50' 
+                          : 'border-gray-200 hover:border-gray-300'
+                      }`}
+                      onClick={() => setCreateFormData({ ...createFormData, integration_type: 'api_key' })}
+                    >
+                      <div className="flex items-center space-x-3">
+                        <input
+                          type="radio"
+                          value="api_key"
+                          checked={createFormData.integration_type === 'api_key'}
+                          onChange={() => setCreateFormData({ ...createFormData, integration_type: 'api_key' })}
+                          className="h-4 w-4 text-gray-900 focus:ring-gray-900"
+                        />
+                        <div>
+                          <div className="font-medium text-gray-900">API Key Integration</div>
+                          <div className="text-sm text-gray-500">
+                            Use SumUp API keys for direct integration
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                    <div 
+                      className={`p-4 border rounded-xl cursor-pointer transition-colors ${
+                        createFormData.integration_type === 'oauth' 
+                          ? 'border-gray-900 bg-gray-50' 
+                          : 'border-gray-200 hover:border-gray-300'
+                      }`}
+                      onClick={() => setCreateFormData({ ...createFormData, integration_type: 'oauth' })}
+                    >
+                      <div className="flex items-center space-x-3">
+                        <input
+                          type="radio"
+                          value="oauth"
+                          checked={createFormData.integration_type === 'oauth'}
+                          onChange={() => setCreateFormData({ ...createFormData, integration_type: 'oauth' })}
+                          className="h-4 w-4 text-gray-900 focus:ring-gray-900"
+                        />
+                        <div>
+                          <div className="font-medium text-gray-900">OAuth Integration</div>
+                          <div className="text-sm text-gray-500">
+                            Use OAuth for secure, token-based access
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Basic Information */}
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-2">Merchant Code</label>
+                    <input
+                      type="text"
+                      value={createFormData.merchant_code}
+                      onChange={(e) => setCreateFormData({ ...createFormData, merchant_code: e.target.value })}
+                      placeholder="e.g., 123456789"
+                      className="w-full px-4 py-3 border border-gray-200 rounded-xl focus:ring-2 focus:ring-gray-900 focus:border-transparent transition-all duration-200 text-sm"
+                      required
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-2">Description</label>
+                    <input
+                      type="text"
+                      value={createFormData.description}
+                      onChange={(e) => setCreateFormData({ ...createFormData, description: e.target.value })}
+                      placeholder="e.g., Main Restaurant POS"
+                      className="w-full px-4 py-3 border border-gray-200 rounded-xl focus:ring-2 focus:ring-gray-900 focus:border-transparent transition-all duration-200 text-sm"
+                      required
+                    />
+                  </div>
+                </div>
 
               {/* OAuth Fields */}
               {createFormData.integration_type === 'oauth' && (
@@ -606,159 +706,154 @@ export default function SumUpPage() {
                 </Button>
               </div>
             </form>
-          </CardContent>
-        )}
-      </Card>
-
-      {/* Merchant Codes */}
-      <Card>
-        <CardHeader>
-          <CardTitle className="flex items-center gap-2">
-            <CreditCard className="h-5 w-5" />
-            Merchant Accounts
-          </CardTitle>
-          <CardDescription>
-            Configured SumUp merchant accounts for payment processing
-          </CardDescription>
-        </CardHeader>
-        <CardContent>
-          {merchantCodes.length > 0 ? (
-            <div className="space-y-4">
-              {merchantCodes.map((merchant) => (
-                <div key={merchant.id} className="flex items-center justify-between p-4 border rounded-lg">
-                  <div className="flex items-center gap-4">
-                    <div className="w-10 h-10 bg-blue-100 rounded-full flex items-center justify-center">
-                      <CreditCard className="h-5 w-5 text-blue-600" />
-                    </div>
-                    <div>
-                      <h3 className="font-medium">{merchant.merchant_code}</h3>
-                      <p className="text-sm text-muted-foreground">{merchant.description}</p>
-                      <div className="flex items-center gap-2 text-xs text-muted-foreground">
-                        <span>Created: {formatDate(merchant.created_at)}</span>
-                        {merchant.last_sync_at && (
-                          <span>• Last sync: {formatDate(merchant.last_sync_at)}</span>
-                        )}
-                        <span>• {merchant.integration_type === 'oauth' ? 'OAuth' : 'API Key'}</span>
-                      </div>
-                    </div>
-                  </div>
-                  <div className="flex items-center gap-2">
-                    <Badge variant={merchant.is_active ? 'default' : 'secondary'}>
-                      {merchant.is_active ? 'Active' : 'Inactive'}
-                    </Badge>
-                    <Badge 
-                      variant={
-                        merchant.sync_status === 'active' ? 'default' :
-                        merchant.sync_status === 'error' ? 'destructive' :
-                        merchant.sync_status === 'syncing' ? 'secondary' : 'outline'
-                      }
-                    >
-                      {merchant.sync_status}
-                    </Badge>
-                    <Button variant="ghost" size="sm">
-                      <Settings className="h-4 w-4" />
-                    </Button>
-                  </div>
-                </div>
-              ))}
-            </div>
-          ) : (
-            <div className="text-center py-8 text-muted-foreground">
-              <CreditCard className="h-12 w-12 mx-auto mb-4 opacity-50" />
-              <p>No merchant accounts configured.</p>
-              <p className="text-sm">Contact support to set up your SumUp integration.</p>
             </div>
           )}
-        </CardContent>
-      </Card>
+        </div>
 
-      {/* Data Synchronization */}
-      <Card>
-        <CardHeader>
-          <CardTitle className="flex items-center gap-2">
-            <Download className="h-5 w-5" />
-            Data Synchronization
-          </CardTitle>
-          <CardDescription>
-            Sync payment transactions from SumUp to your dashboard
-          </CardDescription>
-        </CardHeader>
-        <CardContent>
-          <div className="space-y-4">
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              <div className="space-y-2">
-                <Label htmlFor="fromDate">From Date</Label>
-                <Input
-                  id="fromDate"
-                  type="date"
-                  value={fromDate}
-                  onChange={(e) => setFromDate(e.target.value)}
-                />
-              </div>
-              <div className="space-y-2">
-                <Label htmlFor="toDate">To Date</Label>
-                <Input
-                  id="toDate"
-                  type="date"
-                  value={toDate}
-                  onChange={(e) => setToDate(e.target.value)}
-                />
-              </div>
-            </div>
-            
-            <Button 
-              onClick={handleSync} 
-              disabled={isSyncing || merchantCodes.length === 0}
-              className="w-full"
-            >
-              {isSyncing ? (
-                <>
-                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                  Syncing...
-                </>
-              ) : (
-                <>
-                  <Download className="mr-2 h-4 w-4" />
-                  Sync Transactions
-                </>
-              )}
-            </Button>
-
-            {syncResult && (
-              <div className="p-4 bg-green-50 border border-green-200 rounded-lg">
-                <h4 className="font-medium text-green-800">Sync Complete</h4>
-                <p className="text-sm text-green-600">
-                  {syncResult.message}
-                </p>
+        {/* Merchant Codes */}
+        <div className="bg-white rounded-2xl flat-shadow-lg overflow-hidden mb-8">
+          <div className="px-6 py-4 border-b border-gray-200">
+            <h2 className="text-lg font-semibold text-gray-900">Merchant Accounts ({merchantCodes.length})</h2>
+            <p className="text-sm text-gray-600">Configured SumUp merchant accounts for payment processing</p>
+          </div>
+          <div className="divide-y divide-gray-200">
+            {merchantCodes.length > 0 ? (
+              merchantCodes.map((merchant) => (
+                <div key={merchant.id} className="p-6 hover:bg-gray-50 transition-colors">
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center space-x-4">
+                      <div className="w-10 h-10 bg-blue-100 rounded-full flex items-center justify-center">
+                        <CreditCard className="h-5 w-5 text-blue-600" />
+                      </div>
+                      <div>
+                        <div className="flex items-center space-x-3">
+                          <h3 className="text-sm font-medium text-gray-900">{merchant.merchant_code}</h3>
+                          <span className={`inline-flex items-center px-2 py-1 rounded-full text-xs font-medium ${
+                            merchant.is_active ? 'bg-green-100 text-green-700' : 'bg-gray-100 text-gray-700'
+                          }`}>
+                            {merchant.is_active ? 'Active' : 'Inactive'}
+                          </span>
+                          <span className={`inline-flex items-center px-2 py-1 rounded-full text-xs font-medium ${
+                            merchant.sync_status === 'active' ? 'bg-green-100 text-green-700' :
+                            merchant.sync_status === 'error' ? 'bg-red-100 text-red-700' :
+                            merchant.sync_status === 'syncing' ? 'bg-yellow-100 text-yellow-700' :
+                            'bg-gray-100 text-gray-700'
+                          }`}>
+                            {merchant.sync_status}
+                          </span>
+                        </div>
+                        <p className="text-sm text-gray-500 mt-1">{merchant.description}</p>
+                        <div className="flex items-center space-x-2 mt-1">
+                          <span className="text-xs text-gray-500">Created: {formatDate(merchant.created_at)}</span>
+                          {merchant.last_sync_at && (
+                            <>
+                              <span className="text-gray-300">•</span>
+                              <span className="text-xs text-gray-500">Last sync: {formatDate(merchant.last_sync_at)}</span>
+                            </>
+                          )}
+                          <span className="text-gray-300">•</span>
+                          <span className="text-xs text-gray-500">{merchant.integration_type === 'oauth' ? 'OAuth' : 'API Key'}</span>
+                        </div>
+                      </div>
+                    </div>
+                    <button className="p-2 text-gray-400 hover:text-gray-600 transition-colors">
+                      <Settings className="h-4 w-4" />
+                    </button>
+                  </div>
+                </div>
+              ))
+            ) : (
+              <div className="text-center py-12">
+                <CreditCard className="h-12 w-12 text-gray-400 mx-auto mb-4" />
+                <p className="text-gray-500">No merchant accounts configured.</p>
+                <p className="text-sm text-gray-500">Contact support to set up your SumUp integration.</p>
               </div>
             )}
           </div>
-        </CardContent>
-      </Card>
+        </div>
 
-      {/* Webhook Configuration */}
-      <Card>
-        <CardHeader>
-          <CardTitle>Webhook Configuration</CardTitle>
-          <CardDescription>
-            Real-time transaction updates via SumUp webhooks
-          </CardDescription>
-        </CardHeader>
-        <CardContent>
-          <div className="space-y-4">
-            <div className="p-4 bg-gray-50 border rounded-lg">
-              <h4 className="font-medium mb-2">Webhook URL</h4>
-              <code className="text-sm bg-white p-2 rounded border block">
-                {typeof window !== 'undefined' ? `${window.location.origin}/api/webhooks/sumup` : 'https://your-domain.com/api/webhooks/sumup'}
-              </code>
-            </div>
-            <div className="text-sm text-muted-foreground">
-              <p>Configure this URL in your SumUp merchant dashboard to receive real-time transaction updates.</p>
-              <p className="mt-2">Events: <code>transaction.created</code>, <code>transaction.updated</code></p>
+        {/* Data Synchronization */}
+        <div className="bg-white rounded-2xl flat-shadow-lg overflow-hidden mb-8">
+          <div className="px-6 py-4 border-b border-gray-200">
+            <h2 className="text-lg font-semibold text-gray-900">Data Synchronization</h2>
+            <p className="text-sm text-gray-600">Sync payment transactions from SumUp to your dashboard</p>
+          </div>
+          <div className="p-6">
+            <div className="space-y-4">
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-2">From Date</label>
+                  <input
+                    type="date"
+                    value={fromDate}
+                    onChange={(e) => setFromDate(e.target.value)}
+                    className="w-full px-4 py-3 border border-gray-200 rounded-xl focus:ring-2 focus:ring-gray-900 focus:border-transparent transition-all duration-200 text-sm"
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-2">To Date</label>
+                  <input
+                    type="date"
+                    value={toDate}
+                    onChange={(e) => setToDate(e.target.value)}
+                    className="w-full px-4 py-3 border border-gray-200 rounded-xl focus:ring-2 focus:ring-gray-900 focus:border-transparent transition-all duration-200 text-sm"
+                  />
+                </div>
+              </div>
+            
+              <button 
+                onClick={handleSync}
+                disabled={isSyncing || merchantCodes.length === 0}
+                className="w-full bg-gray-900 text-white px-4 py-3 rounded-xl font-medium hover:bg-gray-800 transition-colors disabled:opacity-50 flex items-center justify-center space-x-2"
+              >
+                {isSyncing ? (
+                  <>
+                    <Loader2 className="h-4 w-4 animate-spin" />
+                    <span>Syncing...</span>
+                  </>
+                ) : (
+                  <>
+                    <Download className="h-4 w-4" />
+                    <span>Sync Transactions</span>
+                  </>
+                )}
+              </button>
+
+              {syncResult && (
+                <div className="p-4 bg-green-50 border border-green-200 rounded-xl">
+                  <h4 className="font-medium text-green-900 mb-2">Sync Complete</h4>
+                  <p className="text-sm text-green-700">
+                    {syncResult.message}
+                  </p>
+                </div>
+              )}
             </div>
           </div>
-        </CardContent>
-      </Card>
+        </div>
+
+        {/* Webhook Configuration */}
+        <div className="bg-white rounded-2xl flat-shadow-lg overflow-hidden">
+          <div className="px-6 py-4 border-b border-gray-200">
+            <h2 className="text-lg font-semibold text-gray-900">Webhook Configuration</h2>
+            <p className="text-sm text-gray-600">Real-time transaction updates via SumUp webhooks</p>
+          </div>
+          <div className="p-6">
+            <div className="space-y-4">
+              <div className="p-4 bg-gray-50 border border-gray-200 rounded-xl">
+                <h4 className="font-medium text-gray-900 mb-2">Webhook URL</h4>
+                <code className="text-sm bg-white p-3 rounded-xl border border-gray-200 block text-gray-700">
+                  {typeof window !== 'undefined' ? `${window.location.origin}/api/webhooks/sumup` : 'https://your-domain.com/api/webhooks/sumup'}
+                </code>
+              </div>
+              <div className="text-sm text-gray-500">
+                <p>Configure this URL in your SumUp merchant dashboard to receive real-time transaction updates.</p>
+                <p className="mt-2">Events: <code className="bg-gray-100 px-2 py-1 rounded text-xs">transaction.created</code>, <code className="bg-gray-100 px-2 py-1 rounded text-xs">transaction.updated</code></p>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
     </div>
   )
 }
+

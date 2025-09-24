@@ -283,16 +283,46 @@ export async function DELETE(
     }
 
     // Delete user from auth.users (this will cascade to public.users due to foreign key)
-    const { error: authDeleteError } = await supabase.auth.admin.deleteUser(
-      existingUser.auth_id
-    )
-
-    if (authDeleteError) {
-      console.error('Auth user delete error:', authDeleteError)
-      return NextResponse.json(
-        { error: { message: 'Failed to delete user: ' + authDeleteError.message } },
-        { status: 500 }
+    if (existingUser.auth_id) {
+      const { error: authDeleteError } = await supabase.auth.admin.deleteUser(
+        existingUser.auth_id
       )
+
+      if (authDeleteError) {
+        console.error('Auth user delete error:', authDeleteError)
+        // If auth user doesn't exist, just delete from public.users
+        if (authDeleteError.message.includes('User not found')) {
+          const { error: publicDeleteError } = await supabase
+            .from('users')
+            .delete()
+            .eq('id', userId)
+
+          if (publicDeleteError) {
+            return NextResponse.json(
+              { error: { message: 'Failed to delete user from database' } },
+              { status: 500 }
+            )
+          }
+        } else {
+          return NextResponse.json(
+            { error: { message: 'Failed to delete user: ' + authDeleteError.message } },
+            { status: 500 }
+          )
+        }
+      }
+    } else {
+      // If no auth_id, just delete from public.users
+      const { error: publicDeleteError } = await supabase
+        .from('users')
+        .delete()
+        .eq('id', userId)
+
+      if (publicDeleteError) {
+        return NextResponse.json(
+          { error: { message: 'Failed to delete user from database' } },
+          { status: 500 }
+        )
+      }
     }
 
     return NextResponse.json({ message: 'User deleted successfully' })

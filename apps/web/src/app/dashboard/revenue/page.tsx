@@ -1,13 +1,9 @@
 'use client'
 
 import { useState, useEffect } from 'react'
-import { createBrowserClient } from '@supabase/ssr'
+import { createClient } from '@supabase/supabase-js'
 import { useRouter } from 'next/navigation'
 import Link from 'next/link'
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
-import { Button } from '@/components/ui/button'
-import { Alert, AlertDescription } from '@/components/ui/alert'
-import { Badge } from '@/components/ui/badge'
 import { 
   Loader2, 
   ArrowLeft,
@@ -15,9 +11,10 @@ import {
   DollarSign,
   TrendingUp,
   Calendar,
-  RefreshCw
+  RefreshCw,
+  Settings,
+  LogOut
 } from 'lucide-react'
-import { LogoutButton } from '@/components/logout-button'
 import {
   Chart as ChartJS,
   CategoryScale,
@@ -69,7 +66,7 @@ export default function RevenuePage() {
   const [isRefreshing, setIsRefreshing] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [selectedPeriod, setSelectedPeriod] = useState<'daily' | 'weekly' | 'monthly'>('daily')
-  const supabase = createBrowserClient(
+  const supabase = createClient(
     process.env.NEXT_PUBLIC_SUPABASE_URL!,
     process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
   )
@@ -346,232 +343,326 @@ export default function RevenuePage() {
 
   if (isLoading) {
     return (
-      <div className="flex items-center justify-center h-64">
-        <Loader2 className="h-8 w-8 animate-spin" />
+      <div className="min-h-screen bg-gray-50 flex items-center justify-center">
+        <div className="flex items-center space-x-2">
+          <Loader2 className="h-6 w-6 animate-spin text-gray-600" />
+          <span className="text-gray-600">Loading revenue data...</span>
+        </div>
       </div>
     )
   }
 
   return (
-    <div className="space-y-6">
-      {/* Navigation Header */}
-      <div className="flex items-center justify-between">
-        <div className="flex items-center gap-4">
-          <Button variant="outline" asChild>
-            <Link href="/dashboard">
-              <ArrowLeft className="mr-2 h-4 w-4" />
-              Back to Dashboard
-            </Link>
-          </Button>
-          <div>
-            <h1 className="text-3xl font-bold tracking-tight">Revenue Analytics</h1>
-            <p className="text-muted-foreground">
-              Track your restaurant's financial performance
-            </p>
-          </div>
-        </div>
-        <div className="flex items-center gap-2">
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={handleRefresh}
-            disabled={isRefreshing}
-          >
-            <RefreshCw className={`mr-2 h-4 w-4 ${isRefreshing ? 'animate-spin' : ''}`} />
-            Refresh
-          </Button>
-          <div className="flex items-center gap-2">
-            <Button
-              variant={selectedPeriod === 'daily' ? 'default' : 'outline'}
-              size="sm"
-              onClick={() => setSelectedPeriod('daily')}
-            >
-              Daily
-            </Button>
-            <Button
-              variant={selectedPeriod === 'weekly' ? 'default' : 'outline'}
-              size="sm"
-              onClick={() => setSelectedPeriod('weekly')}
-            >
-              Weekly
-            </Button>
-            <Button
-              variant={selectedPeriod === 'monthly' ? 'default' : 'outline'}
-              size="sm"
-              onClick={() => setSelectedPeriod('monthly')}
-            >
-              Monthly
-            </Button>
-          </div>
-          <LogoutButton />
-        </div>
-      </div>
-
-      {error && (
-        <Alert variant="destructive">
-          <AlertDescription>{error}</AlertDescription>
-        </Alert>
-      )}
-
-      {/* Summary Cards */}
-      <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
-        <Card>
-          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">Total Revenue</CardTitle>
-            <DollarSign className="h-4 w-4 text-muted-foreground" />
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold">{formatCurrency(getTotalRevenue())}</div>
-            <p className="text-xs text-muted-foreground">
-              {selectedPeriod} view
-            </p>
-          </CardContent>
-        </Card>
-
-        <Card>
-          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">Transactions</CardTitle>
-            <BarChart3 className="h-4 w-4 text-muted-foreground" />
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold">{getTotalTransactions()}</div>
-            <p className="text-xs text-muted-foreground">
-              Total transactions
-            </p>
-          </CardContent>
-        </Card>
-
-        <Card>
-          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">Avg. Transaction</CardTitle>
-            <TrendingUp className="h-4 w-4 text-muted-foreground" />
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold">{formatCurrency(getAverageTransactionValue())}</div>
-            <p className="text-xs text-muted-foreground">
-              Per transaction
-            </p>
-          </CardContent>
-        </Card>
-
-        <Card>
-          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">Period</CardTitle>
-            <Calendar className="h-4 w-4 text-muted-foreground" />
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold capitalize">{selectedPeriod}</div>
-            <p className="text-xs text-muted-foreground">
-              View type
-            </p>
-          </CardContent>
-        </Card>
-      </div>
-
-      {/* Revenue Data Table */}
-      <Card>
-        <CardHeader>
-          <CardTitle>Revenue Details</CardTitle>
-          <CardDescription>
-            Detailed breakdown of your {selectedPeriod} revenue
-          </CardDescription>
-        </CardHeader>
-        <CardContent>
-          {revenueData.length > 0 ? (
-            <div className="space-y-4">
-              {revenueData.map((item, index) => (
-                <div key={index} className="flex items-center justify-between p-4 border rounded-lg">
-                  <div className="flex items-center gap-4">
-                    <div className="w-10 h-10 bg-green-100 rounded-full flex items-center justify-center">
-                      <DollarSign className="h-5 w-5 text-green-600" />
-                    </div>
-                    <div>
-                      <h3 className="font-medium">{formatDate(item.period_start)}</h3>
-                      <p className="text-sm text-muted-foreground">
-                        {item.transaction_count} transactions
-                      </p>
-                    </div>
-                  </div>
-                  <div className="text-right">
-                    <div className="text-lg font-bold">{formatCurrency(item.total_revenue)}</div>
-                    <Badge variant="outline">
-                      {item.period_type}
-                    </Badge>
+    <div className="min-h-screen bg-gray-50">
+      {/* Header - Full Width */}
+      <div className="bg-white border-b border-gray-200">
+        <div className="px-4 sm:px-6 lg:px-8">
+          <div className="py-4">
+            {/* Mobile Layout */}
+            <div className="block sm:hidden">
+              <div className="mb-4">
+                <Link 
+                  href="/dashboard" 
+                  className="flex items-center space-x-2 text-gray-600 hover:text-gray-900 transition-colors mb-2"
+                >
+                  <ArrowLeft className="h-4 w-4" />
+                  <span className="text-sm font-medium">Back to Dashboard</span>
+                </Link>
+                <h1 className="text-xl font-bold text-gray-900">Revenue Analytics</h1>
+                <p className="text-sm text-gray-600 mt-1">Track your restaurant's financial performance</p>
+              </div>
+              
+              <div className="space-y-3">
+                <div className="flex items-center justify-between">
+                  <button
+                    onClick={handleRefresh}
+                    disabled={isRefreshing}
+                    className="bg-gray-100 text-gray-700 px-3 py-2 rounded-xl text-sm font-medium hover:bg-gray-200 transition-colors disabled:opacity-50 flex items-center space-x-2"
+                  >
+                    <RefreshCw className={`h-4 w-4 ${isRefreshing ? 'animate-spin' : ''}`} />
+                    <span className="hidden xs:inline">Refresh</span>
+                  </button>
+                  
+                  <div className="flex items-center space-x-2">
+                    <Link href="/dashboard/settings">
+                      <button className="bg-gray-900 text-white p-2 rounded-xl hover:bg-gray-800 transition-colors">
+                        <Settings className="h-4 w-4" />
+                      </button>
+                    </Link>
+                    
+                    <button 
+                      onClick={async () => {
+                        await supabase.auth.signOut()
+                        router.push('/login')
+                      }}
+                      className="bg-red-600 text-white p-2 rounded-xl hover:bg-red-700 transition-colors"
+                    >
+                      <LogOut className="h-4 w-4" />
+                    </button>
                   </div>
                 </div>
-              ))}
-            </div>
-          ) : (
-            <div className="text-center py-8 text-muted-foreground">
-              <BarChart3 className="h-12 w-12 mx-auto mb-4 opacity-50" />
-              <p>No revenue data available for the selected period.</p>
-              <p className="text-sm">Data will appear here once transactions are processed.</p>
-            </div>
-          )}
-        </CardContent>
-      </Card>
-
-      {/* Charts Section */}
-      <div className="grid gap-6 md:grid-cols-2">
-        {/* Revenue Chart */}
-        <Card>
-          <CardHeader>
-            <CardTitle>Revenue Trend</CardTitle>
-            <CardDescription>
-              Revenue over time for the selected period
-            </CardDescription>
-          </CardHeader>
-          <CardContent>
-            <div className="h-80">
-              {revenueData.length > 0 ? (
-                <Bar data={getRevenueChartData()} options={chartOptions} />
-              ) : (
-                <div className="flex items-center justify-center h-full text-muted-foreground">
-                  No data available
+                
+                <div className="flex items-center space-x-1 bg-gray-100 rounded-xl p-1">
+                  <button
+                    onClick={() => setSelectedPeriod('daily')}
+                    className={`px-2 py-1 rounded-lg text-xs font-medium transition-colors ${
+                      selectedPeriod === 'daily' 
+                        ? 'bg-white text-gray-900 flat-shadow' 
+                        : 'text-gray-600 hover:text-gray-900'
+                    }`}
+                  >
+                    Daily
+                  </button>
+                  <button
+                    onClick={() => setSelectedPeriod('weekly')}
+                    className={`px-2 py-1 rounded-lg text-xs font-medium transition-colors ${
+                      selectedPeriod === 'weekly' 
+                        ? 'bg-white text-gray-900 flat-shadow' 
+                        : 'text-gray-600 hover:text-gray-900'
+                    }`}
+                  >
+                    Weekly
+                  </button>
+                  <button
+                    onClick={() => setSelectedPeriod('monthly')}
+                    className={`px-2 py-1 rounded-lg text-xs font-medium transition-colors ${
+                      selectedPeriod === 'monthly' 
+                        ? 'bg-white text-gray-900 flat-shadow' 
+                        : 'text-gray-600 hover:text-gray-900'
+                    }`}
+                  >
+                    Monthly
+                  </button>
                 </div>
-              )}
+              </div>
             </div>
-          </CardContent>
-        </Card>
-
-        {/* Transaction Count Chart */}
-        <Card>
-          <CardHeader>
-            <CardTitle>Transaction Count</CardTitle>
-            <CardDescription>
-              Number of transactions over time
-            </CardDescription>
-          </CardHeader>
-          <CardContent>
-            <div className="h-80">
-              {revenueData.length > 0 ? (
-                <Line data={getTransactionChartData()} options={transactionChartOptions} />
-              ) : (
-                <div className="flex items-center justify-center h-full text-muted-foreground">
-                  No data available
+            
+            {/* Desktop Layout */}
+            <div className="hidden sm:flex items-center justify-between">
+              <div className="flex items-center space-x-4">
+                <Link 
+                  href="/dashboard" 
+                  className="flex items-center space-x-2 text-gray-600 hover:text-gray-900 transition-colors"
+                >
+                  <ArrowLeft className="h-4 w-4" />
+                  <span className="text-sm font-medium">Back to Dashboard</span>
+                </Link>
+              </div>
+              
+              <div className="flex items-center space-x-3">
+                <button
+                  onClick={handleRefresh}
+                  disabled={isRefreshing}
+                  className="bg-gray-100 text-gray-700 px-4 py-2 rounded-xl text-sm font-medium hover:bg-gray-200 transition-colors disabled:opacity-50 flex items-center space-x-2"
+                >
+                  <RefreshCw className={`h-4 w-4 ${isRefreshing ? 'animate-spin' : ''}`} />
+                  <span>Refresh</span>
+                </button>
+                
+                <div className="flex items-center space-x-1 bg-gray-100 rounded-xl p-1">
+                  <button
+                    onClick={() => setSelectedPeriod('daily')}
+                    className={`px-3 py-1 rounded-lg text-sm font-medium transition-colors ${
+                      selectedPeriod === 'daily' 
+                        ? 'bg-white text-gray-900 flat-shadow' 
+                        : 'text-gray-600 hover:text-gray-900'
+                    }`}
+                  >
+                    Daily
+                  </button>
+                  <button
+                    onClick={() => setSelectedPeriod('weekly')}
+                    className={`px-3 py-1 rounded-lg text-sm font-medium transition-colors ${
+                      selectedPeriod === 'weekly' 
+                        ? 'bg-white text-gray-900 flat-shadow' 
+                        : 'text-gray-600 hover:text-gray-900'
+                    }`}
+                  >
+                    Weekly
+                  </button>
+                  <button
+                    onClick={() => setSelectedPeriod('monthly')}
+                    className={`px-3 py-1 rounded-lg text-sm font-medium transition-colors ${
+                      selectedPeriod === 'monthly' 
+                        ? 'bg-white text-gray-900 flat-shadow' 
+                        : 'text-gray-600 hover:text-gray-900'
+                    }`}
+                  >
+                    Monthly
+                  </button>
                 </div>
-              )}
-            </div>
-          </CardContent>
-        </Card>
-      </div>
-
-      {/* Payment Methods Chart */}
-      <Card>
-        <CardHeader>
-          <CardTitle>Payment Methods Distribution</CardTitle>
-          <CardDescription>
-            Breakdown of payment methods used by customers
-          </CardDescription>
-        </CardHeader>
-        <CardContent>
-          <div className="h-80 flex items-center justify-center">
-            <div className="w-80 h-80">
-              <Doughnut data={getPaymentMethodData()} options={paymentMethodOptions} />
+                
+                <Link href="/dashboard/settings">
+                  <button className="bg-gray-900 text-white p-2 rounded-xl hover:bg-gray-800 transition-colors">
+                    <Settings className="h-4 w-4" />
+                  </button>
+                </Link>
+                
+                <button 
+                  onClick={async () => {
+                    await supabase.auth.signOut()
+                    router.push('/login')
+                  }}
+                  className="bg-red-600 text-white p-2 rounded-xl hover:bg-red-700 transition-colors"
+                >
+                  <LogOut className="h-4 w-4" />
+                </button>
+              </div>
             </div>
           </div>
-        </CardContent>
-      </Card>
+        </div>
+      </div>
+
+      {/* Main Content */}
+      <div className="px-4 sm:px-6 lg:px-8 py-8">
+        {/* Title - Full Width */}
+        <div className="mb-8">
+          <h1 className="text-3xl font-bold text-gray-900 mb-2">Revenue Analytics</h1>
+          <p className="text-gray-600">Track your restaurant's financial performance</p>
+        </div>
+
+        {error && (
+          <div className="mb-6 bg-red-50 border border-red-200 rounded-xl p-4">
+            <p className="text-red-800 text-sm">{error}</p>
+          </div>
+        )}
+
+        {/* Summary Cards */}
+        <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-4 mb-8">
+          <div className="bg-white rounded-2xl flat-shadow-lg p-6">
+            <div className="flex items-center justify-between mb-4">
+              <h3 className="text-sm font-medium text-gray-600">Total Revenue</h3>
+              <DollarSign className="h-5 w-5 text-gray-400" />
+            </div>
+            <div className="text-2xl font-bold text-gray-900 mb-2">{formatCurrency(getTotalRevenue())}</div>
+            <p className="text-sm text-gray-500">{selectedPeriod} view</p>
+          </div>
+
+          <div className="bg-white rounded-2xl flat-shadow-lg p-6">
+            <div className="flex items-center justify-between mb-4">
+              <h3 className="text-sm font-medium text-gray-600">Transactions</h3>
+              <BarChart3 className="h-5 w-5 text-gray-400" />
+            </div>
+            <div className="text-2xl font-bold text-gray-900 mb-2">{getTotalTransactions()}</div>
+            <p className="text-sm text-gray-500">Total transactions</p>
+          </div>
+
+          <div className="bg-white rounded-2xl flat-shadow-lg p-6">
+            <div className="flex items-center justify-between mb-4">
+              <h3 className="text-sm font-medium text-gray-600">Avg. Transaction</h3>
+              <TrendingUp className="h-5 w-5 text-gray-400" />
+            </div>
+            <div className="text-2xl font-bold text-gray-900 mb-2">{formatCurrency(getAverageTransactionValue())}</div>
+            <p className="text-sm text-gray-500">Per transaction</p>
+          </div>
+
+          <div className="bg-white rounded-2xl flat-shadow-lg p-6">
+            <div className="flex items-center justify-between mb-4">
+              <h3 className="text-sm font-medium text-gray-600">Period</h3>
+              <Calendar className="h-5 w-5 text-gray-400" />
+            </div>
+            <div className="text-2xl font-bold text-gray-900 mb-2 capitalize">{selectedPeriod}</div>
+            <p className="text-sm text-gray-500">View type</p>
+          </div>
+        </div>
+
+        {/* Revenue Data Table */}
+        <div className="bg-white rounded-2xl flat-shadow-lg overflow-hidden mb-8">
+          <div className="px-6 py-4 border-b border-gray-200">
+            <h2 className="text-lg font-semibold text-gray-900">Revenue Details</h2>
+            <p className="text-sm text-gray-600">Detailed breakdown of your {selectedPeriod} revenue</p>
+          </div>
+          <div className="p-6">
+            {revenueData.length > 0 ? (
+              <div className="space-y-4">
+                {revenueData.map((item, index) => (
+                  <div key={index} className="flex items-center justify-between p-4 border border-gray-200 rounded-xl hover:bg-gray-50 transition-colors">
+                    <div className="flex items-center space-x-4">
+                      <div className="w-10 h-10 bg-green-100 rounded-full flex items-center justify-center">
+                        <DollarSign className="h-5 w-5 text-green-600" />
+                      </div>
+                      <div>
+                        <h3 className="font-medium text-gray-900">{formatDate(item.period_start)}</h3>
+                        <p className="text-sm text-gray-500">
+                          {item.transaction_count} transactions
+                        </p>
+                      </div>
+                    </div>
+                    <div className="text-right">
+                      <div className="text-lg font-bold text-gray-900">{formatCurrency(item.total_revenue)}</div>
+                      <span className="inline-flex items-center px-2 py-1 rounded-full text-xs font-medium bg-gray-100 text-gray-700">
+                        {item.period_type}
+                      </span>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            ) : (
+              <div className="text-center py-8 text-gray-500">
+                <BarChart3 className="h-12 w-12 mx-auto mb-4 opacity-50" />
+                <p>No revenue data available for the selected period.</p>
+                <p className="text-sm">Data will appear here once transactions are processed.</p>
+              </div>
+            )}
+          </div>
+        </div>
+
+        {/* Charts Section */}
+        <div className="grid gap-6 md:grid-cols-2 mb-8">
+          {/* Revenue Chart */}
+          <div className="bg-white rounded-2xl flat-shadow-lg overflow-hidden">
+            <div className="px-6 py-4 border-b border-gray-200">
+              <h2 className="text-lg font-semibold text-gray-900">Revenue Trend</h2>
+              <p className="text-sm text-gray-600">Revenue over time for the selected period</p>
+            </div>
+            <div className="p-6">
+              <div className="h-80">
+                {revenueData.length > 0 ? (
+                  <Bar data={getRevenueChartData()} options={chartOptions} />
+                ) : (
+                  <div className="flex items-center justify-center h-full text-gray-500">
+                    No data available
+                  </div>
+                )}
+              </div>
+            </div>
+          </div>
+
+          {/* Transaction Count Chart */}
+          <div className="bg-white rounded-2xl flat-shadow-lg overflow-hidden">
+            <div className="px-6 py-4 border-b border-gray-200">
+              <h2 className="text-lg font-semibold text-gray-900">Transaction Count</h2>
+              <p className="text-sm text-gray-600">Number of transactions over time</p>
+            </div>
+            <div className="p-6">
+              <div className="h-80">
+                {revenueData.length > 0 ? (
+                  <Line data={getTransactionChartData()} options={transactionChartOptions} />
+                ) : (
+                  <div className="flex items-center justify-center h-full text-gray-500">
+                    No data available
+                  </div>
+                )}
+              </div>
+            </div>
+          </div>
+        </div>
+
+        {/* Payment Methods Chart */}
+        <div className="bg-white rounded-2xl flat-shadow-lg overflow-hidden">
+          <div className="px-6 py-4 border-b border-gray-200">
+            <h2 className="text-lg font-semibold text-gray-900">Payment Methods Distribution</h2>
+            <p className="text-sm text-gray-600">Breakdown of payment methods used by customers</p>
+          </div>
+          <div className="p-6">
+            <div className="h-80 flex items-center justify-center">
+              <div className="w-80 h-80">
+                <Doughnut data={getPaymentMethodData()} options={paymentMethodOptions} />
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
     </div>
   )
 }
