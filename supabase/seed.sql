@@ -33,10 +33,11 @@ ON CONFLICT (organization_id, module_name) DO NOTHING;
 
 -- Create sample merchant codes for testing
 INSERT INTO public.merchant_codes (
-  id, 
-  organization_id, 
-  merchant_code, 
-  merchant_name, 
+  id,
+  organization_id,
+  merchant_code,
+  merchant_name,
+  integration_type,
   is_active, 
   sync_status,
   created_at, 
@@ -48,6 +49,7 @@ VALUES
     '550e8400-e29b-41d4-a716-446655440000',
     'JOSCHI001',
     'Joschi Pizza Bistro - Hauptstandort',
+    'api_key',
     true,
     'inactive',
     NOW(),
@@ -58,6 +60,7 @@ VALUES
     '550e8400-e29b-41d4-a716-446655440000',
     'JOSCHI002',
     'Joschi Pizza Bistro - Lieferung',
+    'oauth',
     true,
     'inactive',
     NOW(),

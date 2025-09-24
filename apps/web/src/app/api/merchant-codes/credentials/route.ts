@@ -10,7 +10,7 @@ const ENCRYPTION_ALGORITHM = 'aes-256-cbc'
 const ENCRYPTION_KEY = process.env.ENCRYPTION_KEY || '0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef' // 64 hex chars = 32 bytes
 
 // Decryption function
-function decrypt(encrypted: string, iv: string, tag: string): string {
+function decrypt(encrypted: string, iv: string, _tag: string): string {
   const decipher = crypto.createDecipheriv(ENCRYPTION_ALGORITHM, Buffer.from(ENCRYPTION_KEY, 'hex'), Buffer.from(iv, 'hex'))
   
   let decrypted = decipher.update(encrypted, 'hex', 'utf8')

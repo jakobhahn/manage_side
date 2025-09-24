@@ -1,0 +1,371 @@
+# Doppler Setup & Configuration
+
+Doppler ist unser zentrales Tool für die Verwaltung von Umgebungsvariablen und Secrets. Es ermöglicht es uns, sicher und effizient Konfigurationen zwischen verschiedenen Umgebungen zu verwalten.
+
+## Was ist Doppler?
+
+Doppler ist ein Secret-Management-Service, der:
+- ✅ Umgebungsvariablen zentral verwaltet
+- ✅ Secrets sicher verschlüsselt speichert
+- ✅ Automatische Synchronisation zwischen Umgebungen
+- ✅ Team-Zugriffskontrolle und Audit-Logs
+- ✅ Integration mit CI/CD-Pipelines
+- ✅ Lokale Entwicklung mit CLI
+
+## Installation
+
+### 1. Doppler CLI installieren
+
+```bash
+# macOS (mit Homebrew)
+brew install dopplerhq/cli/doppler
+
+# Linux/Windows
+curl -Ls https://cli.doppler.com/install.sh | sh
+
+# Oder mit npm
+npm install -g @doppler/cli
+```
+
+### 2. Doppler Account erstellen
+
+1. Gehe zu [doppler.com](https://doppler.com)
+2. Erstelle einen Account oder logge dich ein
+3. Erstelle ein neues Projekt: "Hans Restaurant App"
+
+## Projekt-Setup
+
+### 1. Doppler Projekt erstellen
+
+```bash
+# Login in Doppler
+doppler login
+
+# Erstelle ein neues Projekt
+doppler projects create hans-restaurant-app
+
+# Erstelle Umgebungen
+doppler environments create dev
+doppler environments create staging
+doppler environments create prod
+```
+
+### 2. Lokale Konfiguration
+
+```bash
+# Navigiere zum Projekt
+cd /Users/jakob/code/Hans/app
+
+# Initialisiere Doppler für das Projekt
+doppler setup
+
+# Wähle das Projekt: hans-restaurant-app
+# Wähle die Umgebung: dev
+```
+
+## Umgebungsvariablen konfigurieren
+
+### 1. Secrets hinzufügen
+
+```bash
+# Einzelne Secrets hinzufügen
+doppler secrets set SUPABASE_URL "https://your-project.supabase.co"
+doppler secrets set SUPABASE_ANON_KEY "your-anon-key"
+doppler secrets set SUPABASE_SERVICE_ROLE_KEY "your-service-role-key"
+
+# Mehrere Secrets auf einmal
+doppler secrets set \
+  NEXT_PUBLIC_SUPABASE_URL="https://your-project.supabase.co" \
+  NEXT_PUBLIC_SUPABASE_ANON_KEY="your-anon-key" \
+  SUPABASE_SERVICE_ROLE_KEY="your-service-role-key" \
+  ENCRYPTION_KEY="your-64-char-hex-key"
+```
+
+### 2. Secrets für verschiedene Umgebungen
+
+```bash
+# Für Staging
+doppler secrets set --project hans-restaurant-app --config staging \
+  SUPABASE_URL="https://staging-project.supabase.co" \
+  SUPABASE_ANON_KEY="staging-anon-key"
+
+# Für Production
+doppler secrets set --project hans-restaurant-app --config prod \
+  SUPABASE_URL="https://prod-project.supabase.co" \
+  SUPABASE_ANON_KEY="prod-anon-key"
+```
+
+## Lokale Entwicklung
+
+### 1. Doppler mit Next.js integrieren
+
+```bash
+# Starte die Entwicklungsumgebung mit Doppler
+doppler run -- pnpm dev
+
+# Oder für spezifische Umgebung
+doppler run --config staging -- pnpm dev
+```
+
+### 2. .env.local automatisch generieren
+
+```bash
+# Generiere .env.local aus Doppler
+doppler secrets download --no-file --format env > .env.local
+
+# Oder für spezifische Umgebung
+doppler secrets download --config staging --no-file --format env > .env.staging
+```
+
+### 3. VS Code Integration
+
+Erstelle `.vscode/settings.json`:
+
+```json
+{
+  "doppler.enable": true,
+  "doppler.project": "hans-restaurant-app",
+  "doppler.config": "dev"
+}
+```
+
+## Team-Zugriff verwalten
+
+### 1. Team-Mitglieder hinzufügen
+
+```bash
+# Über Doppler Dashboard
+# 1. Gehe zu deinem Projekt
+# 2. Klicke auf "Members"
+# 3. Füge Team-Mitglieder hinzu
+# 4. Weise Rollen zu (Admin, Developer, Viewer)
+```
+
+### 2. Rollen und Berechtigungen
+
+- **Admin**: Vollzugriff auf alle Secrets und Einstellungen
+- **Developer**: Kann Secrets lesen und in dev/staging ändern
+- **Viewer**: Kann nur Secrets lesen
+
+## CI/CD Integration
+
+### 1. GitHub Actions
+
+Erstelle `.github/workflows/deploy.yml`:
+
+```yaml
+name: Deploy to Production
+
+on:
+  push:
+    branches: [main]
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v3
+      
+      - name: Install Doppler CLI
+        uses: dopplerhq/cli-action@v3
+        with:
+          token: ${{ secrets.DOPPLER_TOKEN }}
+          
+      - name: Deploy with Doppler
+        run: |
+          doppler run -- pnpm build
+          doppler run -- pnpm start
+        env:
+          DOPPLER_TOKEN: ${{ secrets.DOPPLER_TOKEN }}
+```
+
+### 2. Vercel Integration
+
+```bash
+# Installiere Vercel CLI
+npm i -g vercel
+
+# Verbinde mit Doppler
+vercel env add DOPPLER_TOKEN
+
+# Deploy mit Doppler Secrets
+doppler run -- vercel --prod
+```
+
+## Sicherheitsrichtlinien
+
+### 1. Secret-Rotation
+
+```bash
+# Regelmäßige Rotation von Secrets
+doppler secrets set --rotate ENCRYPTION_KEY
+
+# Alte Secrets archivieren
+doppler secrets archive OLD_SECRET_NAME
+```
+
+### 2. Audit-Logs
+
+```bash
+# Audit-Logs anzeigen
+doppler activity logs
+
+# Spezifische Secret-Änderungen
+doppler activity logs --secret SUPABASE_SERVICE_ROLE_KEY
+```
+
+## Häufige Befehle
+
+### Secrets verwalten
+
+```bash
+# Alle Secrets anzeigen
+doppler secrets
+
+# Spezifisches Secret anzeigen
+doppler secrets get SUPABASE_URL
+
+# Secret löschen
+doppler secrets delete OLD_SECRET
+
+# Secrets exportieren
+doppler secrets download --format json > secrets.json
+```
+
+### Umgebungen verwalten
+
+```bash
+# Umgebungen auflisten
+doppler environments
+
+# Neue Umgebung erstellen
+doppler environments create test
+
+# Umgebung löschen
+doppler environments delete test
+```
+
+### Lokale Entwicklung
+
+```bash
+# Aktuelle Konfiguration anzeigen
+doppler configure
+
+# Zu anderer Umgebung wechseln
+doppler configure set config staging
+
+# Secrets in Shell laden
+doppler run -- bash
+```
+
+## Troubleshooting
+
+### Häufige Probleme
+
+**Problem**: `doppler: command not found`
+```bash
+# Lösung: Doppler CLI neu installieren
+curl -Ls https://cli.doppler.com/install.sh | sh
+```
+
+**Problem**: `Authentication failed`
+```bash
+# Lösung: Neu einloggen
+doppler login
+```
+
+**Problem**: `Project not found`
+```bash
+# Lösung: Projekt-Setup überprüfen
+doppler projects
+doppler setup
+```
+
+### Debug-Modus
+
+```bash
+# Debug-Informationen anzeigen
+doppler run --debug -- pnpm dev
+
+# Verbose Logging
+doppler secrets --verbose
+```
+
+## Best Practices
+
+### 1. Secret-Naming
+
+```bash
+# Konsistente Namenskonventionen
+NEXT_PUBLIC_SUPABASE_URL     # Öffentliche Variablen
+SUPABASE_SERVICE_ROLE_KEY    # Private Secrets
+ENCRYPTION_KEY              # Verschlüsselungsschlüssel
+```
+
+### 2. Umgebungs-spezifische Konfiguration
+
+```bash
+# Verwende verschiedene Projekte für verschiedene Umgebungen
+hans-restaurant-app-dev
+hans-restaurant-app-staging
+hans-restaurant-app-prod
+```
+
+### 3. Team-Workflow
+
+1. **Entwicklung**: Alle arbeiten mit `dev` Umgebung
+2. **Testing**: `staging` für Integrationstests
+3. **Production**: Nur Admins können `prod` ändern
+4. **Rotation**: Regelmäßige Secret-Rotation
+
+## Integration mit anderen Tools
+
+### 1. Docker
+
+```dockerfile
+# Dockerfile
+FROM node:18-alpine
+RUN apk add --no-cache curl
+RUN curl -Ls https://cli.doppler.com/install.sh | sh
+COPY . .
+RUN npm install
+CMD ["doppler", "run", "--", "npm", "start"]
+```
+
+### 2. Kubernetes
+
+```yaml
+# k8s-secret.yaml
+apiVersion: v1
+kind: Secret
+metadata:
+  name: doppler-secrets
+type: Opaque
+data:
+  doppler-token: <base64-encoded-token>
+```
+
+### 3. Monitoring
+
+```bash
+# Secret-Änderungen überwachen
+doppler activity logs --watch
+
+# Alerts bei kritischen Änderungen
+doppler webhooks create --url https://your-webhook.com/doppler-alerts
+```
+
+## Nützliche Links
+
+- [Doppler Documentation](https://docs.doppler.com/)
+- [CLI Reference](https://docs.doppler.com/docs/cli)
+- [API Reference](https://docs.doppler.com/docs/api)
+- [GitHub Integration](https://docs.doppler.com/docs/github)
+- [Vercel Integration](https://docs.doppler.com/docs/vercel)
+
+## Support
+
+Bei Problemen oder Fragen:
+1. Überprüfe die [Doppler Docs](https://docs.doppler.com/)
+2. Schaue in die [GitHub Issues](https://github.com/DopplerHQ/cli/issues)
+3. Kontaktiere das Team im Slack #dev-tools

@@ -10,6 +10,7 @@ import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Alert, AlertDescription } from '@/components/ui/alert'
 import { Badge } from '@/components/ui/badge'
+import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group'
 import { 
   Loader2, 
   ArrowLeft,
@@ -34,13 +35,21 @@ interface MerchantCode {
   sync_status: 'active' | 'inactive' | 'error' | 'syncing'
   last_sync_at: string | null
   webhook_url: string | null
+  integration_type: 'oauth' | 'api_key'
+  oauth_client_id?: string
+  oauth_token_expires_at?: string
 }
 
 interface CreateMerchantCodeData {
   merchant_code: string
   description: string
-  api_key: string
-  api_secret: string
+  integration_type: 'oauth' | 'api_key'
+  // OAuth fields
+  oauth_client_id?: string
+  oauth_client_secret?: string
+  // API Key fields
+  api_key?: string
+  api_secret?: string
 }
 
 interface SyncResult {
@@ -63,6 +72,7 @@ export default function SumUpPage() {
   const [createFormData, setCreateFormData] = useState<CreateMerchantCodeData>({
     merchant_code: '',
     description: '',
+    integration_type: 'api_key',
     api_key: '',
     api_secret: ''
   })
@@ -263,9 +273,22 @@ export default function SumUpPage() {
   const handleCreateMerchantCode = async (e: React.FormEvent) => {
     e.preventDefault()
     
-    if (!createFormData.merchant_code || !createFormData.description || !createFormData.api_key || !createFormData.api_secret) {
-      setError('All fields are required')
+    // Validate based on integration type
+    if (!createFormData.merchant_code || !createFormData.description) {
+      setError('Merchant code and description are required')
       return
+    }
+
+    if (createFormData.integration_type === 'oauth') {
+      if (!createFormData.oauth_client_id || !createFormData.oauth_client_secret) {
+        setError('OAuth Client ID and Client Secret are required')
+        return
+      }
+    } else if (createFormData.integration_type === 'api_key') {
+      if (!createFormData.api_key || !createFormData.api_secret) {
+        setError('API Key and API Secret are required')
+        return
+      }
     }
 
     setIsCreating(true)
@@ -314,6 +337,7 @@ export default function SumUpPage() {
       setCreateFormData({
         merchant_code: '',
         description: '',
+        integration_type: 'api_key',
         api_key: '',
         api_secret: ''
       })
@@ -396,7 +420,39 @@ export default function SumUpPage() {
         </CardHeader>
         {showCreateForm && (
           <CardContent>
-            <form onSubmit={handleCreateMerchantCode} className="space-y-4">
+            <form onSubmit={handleCreateMerchantCode} className="space-y-6">
+              {/* Integration Type Selection */}
+              <div className="space-y-4">
+                <Label className="text-base font-medium">Integration Type</Label>
+                <RadioGroup
+                  value={createFormData.integration_type}
+                  onValueChange={(value: 'oauth' | 'api_key') => 
+                    setCreateFormData({ ...createFormData, integration_type: value })
+                  }
+                  className="grid grid-cols-1 md:grid-cols-2 gap-4"
+                >
+                  <div className="flex items-center space-x-2 p-4 border rounded-lg">
+                    <RadioGroupItem value="api_key" id="api_key" />
+                    <Label htmlFor="api_key" className="flex-1 cursor-pointer">
+                      <div className="font-medium">API Key Integration</div>
+                      <div className="text-sm text-muted-foreground">
+                        Use SumUp API keys for direct integration
+                      </div>
+                    </Label>
+                  </div>
+                  <div className="flex items-center space-x-2 p-4 border rounded-lg">
+                    <RadioGroupItem value="oauth" id="oauth" />
+                    <Label htmlFor="oauth" className="flex-1 cursor-pointer">
+                      <div className="font-medium">OAuth Integration</div>
+                      <div className="text-sm text-muted-foreground">
+                        Use OAuth for secure, token-based access
+                      </div>
+                    </Label>
+                  </div>
+                </RadioGroup>
+              </div>
+
+              {/* Basic Information */}
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <div className="space-y-2">
                   <Label htmlFor="merchant_code">Merchant Code</Label>
@@ -418,68 +474,117 @@ export default function SumUpPage() {
                     required
                   />
                 </div>
-                <div className="space-y-2">
-                  <Label htmlFor="api_key">API Key</Label>
-                  <Input
-                    id="api_key"
-                    type="password"
-                    value={createFormData.api_key}
-                    onChange={(e) => setCreateFormData({ ...createFormData, api_key: e.target.value })}
-                    placeholder="Enter SumUp API Key"
-                    required
-                  />
-                </div>
-                <div className="space-y-2">
-                  <Label htmlFor="api_secret">API Secret (Salt)</Label>
-                  <div className="flex gap-2">
-                    <Input
-                      id="api_secret"
-                      type="password"
-                      value={createFormData.api_secret}
-                      onChange={(e) => setCreateFormData({ ...createFormData, api_secret: e.target.value })}
-                      placeholder="Enter SumUp API Secret or generate a salt"
-                      required
-                      className="flex-1"
-                    />
-                    <Button
-                      type="button"
-                      variant="outline"
-                      onClick={generateSalt}
-                      className="px-3"
-                    >
-                      <Key className="h-4 w-4" />
-                    </Button>
-                  </div>
-                  {generatedSalt && (
-                    <div className="space-y-2">
-                      <Label className="text-sm font-medium text-green-600">Generated Salt:</Label>
-                      <div className="flex gap-2">
-                        <Input
-                          value={generatedSalt}
-                          readOnly
-                          className="font-mono text-xs bg-gray-50"
-                        />
-                        <Button
-                          type="button"
-                          variant="outline"
-                          size="sm"
-                          onClick={copySaltToClipboard}
-                          className="px-3"
-                        >
-                          {saltCopied ? (
-                            <Check className="h-4 w-4 text-green-600" />
-                          ) : (
-                            <Copy className="h-4 w-4" />
-                          )}
-                        </Button>
-                      </div>
-                      <p className="text-xs text-muted-foreground">
-                        Click the key icon to generate a strong salt, then copy it to use as your API Secret
-                      </p>
-                    </div>
-                  )}
-                </div>
               </div>
+
+              {/* OAuth Fields */}
+              {createFormData.integration_type === 'oauth' && (
+                <div className="space-y-4">
+                  <div className="p-4 bg-blue-50 border border-blue-200 rounded-lg">
+                    <h4 className="font-medium text-blue-900 mb-2">OAuth Configuration</h4>
+                    <p className="text-sm text-blue-700 mb-4">
+                      Configure OAuth credentials from your SumUp developer dashboard.
+                    </p>
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                      <div className="space-y-2">
+                        <Label htmlFor="oauth_client_id">Client ID</Label>
+                        <Input
+                          id="oauth_client_id"
+                          value={createFormData.oauth_client_id || ''}
+                          onChange={(e) => setCreateFormData({ ...createFormData, oauth_client_id: e.target.value })}
+                          placeholder="Enter OAuth Client ID"
+                          required
+                        />
+                      </div>
+                      <div className="space-y-2">
+                        <Label htmlFor="oauth_client_secret">Client Secret</Label>
+                        <Input
+                          id="oauth_client_secret"
+                          type="password"
+                          value={createFormData.oauth_client_secret || ''}
+                          onChange={(e) => setCreateFormData({ ...createFormData, oauth_client_secret: e.target.value })}
+                          placeholder="Enter OAuth Client Secret"
+                          required
+                        />
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {/* API Key Fields */}
+              {createFormData.integration_type === 'api_key' && (
+                <div className="space-y-4">
+                  <div className="p-4 bg-green-50 border border-green-200 rounded-lg">
+                    <h4 className="font-medium text-green-900 mb-2">API Key Configuration</h4>
+                    <p className="text-sm text-green-700 mb-4">
+                      Use your SumUp API credentials for direct integration.
+                    </p>
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                      <div className="space-y-2">
+                        <Label htmlFor="api_key">API Key</Label>
+                        <Input
+                          id="api_key"
+                          type="password"
+                          value={createFormData.api_key || ''}
+                          onChange={(e) => setCreateFormData({ ...createFormData, api_key: e.target.value })}
+                          placeholder="Enter SumUp API Key"
+                          required
+                        />
+                      </div>
+                      <div className="space-y-2">
+                        <Label htmlFor="api_secret">API Secret (Salt)</Label>
+                        <div className="flex gap-2">
+                          <Input
+                            id="api_secret"
+                            type="password"
+                            value={createFormData.api_secret || ''}
+                            onChange={(e) => setCreateFormData({ ...createFormData, api_secret: e.target.value })}
+                            placeholder="Enter SumUp API Secret or generate a salt"
+                            required
+                            className="flex-1"
+                          />
+                          <Button
+                            type="button"
+                            variant="outline"
+                            onClick={generateSalt}
+                            className="px-3"
+                          >
+                            <Key className="h-4 w-4" />
+                          </Button>
+                        </div>
+                        {generatedSalt && (
+                          <div className="space-y-2">
+                            <Label className="text-sm font-medium text-green-600">Generated Salt:</Label>
+                            <div className="flex gap-2">
+                              <Input
+                                value={generatedSalt}
+                                readOnly
+                                className="font-mono text-xs bg-gray-50"
+                              />
+                              <Button
+                                type="button"
+                                variant="outline"
+                                size="sm"
+                                onClick={copySaltToClipboard}
+                                className="px-3"
+                              >
+                                {saltCopied ? (
+                                  <Check className="h-4 w-4 text-green-600" />
+                                ) : (
+                                  <Copy className="h-4 w-4" />
+                                )}
+                              </Button>
+                            </div>
+                            <p className="text-xs text-muted-foreground">
+                              Click the key icon to generate a strong salt, then copy it to use as your API Secret
+                            </p>
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              )}
               <div className="flex justify-end gap-2">
                 <Button 
                   type="button" 
@@ -532,6 +637,7 @@ export default function SumUpPage() {
                         {merchant.last_sync_at && (
                           <span>• Last sync: {formatDate(merchant.last_sync_at)}</span>
                         )}
+                        <span>• {merchant.integration_type === 'oauth' ? 'OAuth' : 'API Key'}</span>
                       </div>
                     </div>
                   </div>

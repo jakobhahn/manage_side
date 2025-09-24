@@ -136,7 +136,12 @@ export default function DashboardPage() {
 
   // Role-based UI rendering
   const renderQuickStats = () => {
-    const stats = [
+    const stats: Array<{
+      title: string
+      value: string
+      icon: any
+      link?: string
+    }> = [
       {
         title: "Organization",
         value: organization?.name || 'N/A',
@@ -293,7 +298,7 @@ export default function DashboardPage() {
                 <div className="text-2xl font-bold">{stat.value}</div>
                 <p className="text-xs text-muted-foreground">
                   {stat.link ? (
-                    <Link href={stat.link} className="text-blue-600 hover:underline">
+                    <Link href={stat.link as any} className="text-blue-600 hover:underline">
                       {stat.title === "Team Members" ? "Manage users" : 
                        stat.title === "Today's Revenue" ? "View analytics" :
                        stat.title === "Active Shifts" ? "View schedule" : "View details"}

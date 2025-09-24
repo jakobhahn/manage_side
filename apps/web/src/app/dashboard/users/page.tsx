@@ -20,7 +20,10 @@ import {
   MoreHorizontal,
   Edit,
   Trash2,
-  ArrowLeft
+  ArrowLeft,
+  Key,
+  Save,
+  X
 } from 'lucide-react'
 import {
   DropdownMenu,
@@ -28,6 +31,14 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu'
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from '@/components/ui/dialog'
 import { LogoutButton } from '@/components/logout-button'
 
 interface User {
@@ -47,12 +58,27 @@ interface CreateUserData {
   password: string
 }
 
+interface EditUserData {
+  name: string
+  email: string
+  role: 'owner' | 'manager' | 'staff'
+}
+
 export default function UsersPage() {
   const [users, setUsers] = useState<User[]>([])
   const [isLoading, setIsLoading] = useState(true)
   const [isCreating, setIsCreating] = useState(false)
+  const [isUpdating, setIsUpdating] = useState(false)
+  const [isDeleting, setIsDeleting] = useState(false)
+  const [isResettingPassword, setIsResettingPassword] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [showCreateForm, setShowCreateForm] = useState(false)
+  const [showEditDialog, setShowEditDialog] = useState(false)
+  const [showDeleteDialog, setShowDeleteDialog] = useState(false)
+  const [showPasswordDialog, setShowPasswordDialog] = useState(false)
+  const [editingUser, setEditingUser] = useState<User | null>(null)
+  const [deletingUser, setDeletingUser] = useState<User | null>(null)
+  const [resettingUser, setResettingUser] = useState<User | null>(null)
   const [isAuthenticated, setIsAuthenticated] = useState(false)
   const supabase = createBrowserClient(
     process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -65,6 +91,12 @@ export default function UsersPage() {
     role: 'staff',
     password: ''
   })
+  const [editFormData, setEditFormData] = useState<EditUserData>({
+    name: '',
+    email: '',
+    role: 'staff'
+  })
+  const [newPassword, setNewPassword] = useState('')
 
   useEffect(() => {
     checkAuthAndFetchUsers()
@@ -175,9 +207,16 @@ export default function UsersPage() {
 
   const handleToggleUserStatus = async (userId: string, isActive: boolean) => {
     try {
+      const { data: { session } } = await supabase.auth.getSession()
+      
+      if (!session) {
+        throw new Error('No active session')
+      }
+
       const response = await fetch(`/api/users/${userId}`, {
         method: 'PATCH',
         headers: {
+          'Authorization': `Bearer ${session.access_token}`,
           'Content-Type': 'application/json',
         },
         body: JSON.stringify({ is_active: !isActive }),
@@ -193,6 +232,157 @@ export default function UsersPage() {
       await fetchUsers()
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to update user')
+    }
+  }
+
+  const handleEditUser = (user: User) => {
+    setEditingUser(user)
+    setEditFormData({
+      name: user.name,
+      email: user.email,
+      role: user.role
+    })
+    setShowEditDialog(true)
+  }
+
+  const handleUpdateUser = async (e: React.FormEvent) => {
+    e.preventDefault()
+    
+    if (!editingUser || !editFormData.name || !editFormData.email) {
+      setError('Name and email are required')
+      return
+    }
+
+    setIsUpdating(true)
+    setError(null)
+
+    try {
+      const { data: { session } } = await supabase.auth.getSession()
+      
+      if (!session) {
+        throw new Error('No active session')
+      }
+
+      const response = await fetch(`/api/users/${editingUser.id}`, {
+        method: 'PATCH',
+        headers: {
+          'Authorization': `Bearer ${session.access_token}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(editFormData),
+      })
+
+      const data = await response.json()
+      
+      if (data.error) {
+        throw new Error(data.error.message)
+      }
+
+      // Refresh users list
+      await fetchUsers()
+      
+      // Close dialog
+      setShowEditDialog(false)
+      setEditingUser(null)
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to update user')
+    } finally {
+      setIsUpdating(false)
+    }
+  }
+
+  const handleDeleteUser = (user: User) => {
+    setDeletingUser(user)
+    setShowDeleteDialog(true)
+  }
+
+  const handleConfirmDelete = async () => {
+    if (!deletingUser) return
+
+    setIsDeleting(true)
+    setError(null)
+
+    try {
+      const { data: { session } } = await supabase.auth.getSession()
+      
+      if (!session) {
+        throw new Error('No active session')
+      }
+
+      const response = await fetch(`/api/users/${deletingUser.id}`, {
+        method: 'DELETE',
+        headers: {
+          'Authorization': `Bearer ${session.access_token}`,
+          'Content-Type': 'application/json',
+        },
+      })
+
+      const data = await response.json()
+      
+      if (data.error) {
+        throw new Error(data.error.message)
+      }
+
+      // Refresh users list
+      await fetchUsers()
+      
+      // Close dialog
+      setShowDeleteDialog(false)
+      setDeletingUser(null)
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to delete user')
+    } finally {
+      setIsDeleting(false)
+    }
+  }
+
+  const handleResetPassword = (user: User) => {
+    setResettingUser(user)
+    setNewPassword('')
+    setShowPasswordDialog(true)
+  }
+
+  const handleConfirmPasswordReset = async (e: React.FormEvent) => {
+    e.preventDefault()
+    
+    if (!resettingUser || !newPassword || newPassword.length < 6) {
+      setError('Password must be at least 6 characters long')
+      return
+    }
+
+    setIsResettingPassword(true)
+    setError(null)
+
+    try {
+      const { data: { session } } = await supabase.auth.getSession()
+      
+      if (!session) {
+        throw new Error('No active session')
+      }
+
+      const response = await fetch(`/api/users/${resettingUser.id}/reset-password`, {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${session.access_token}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ newPassword }),
+      })
+
+      const data = await response.json()
+      
+      if (data.error) {
+        throw new Error(data.error.message)
+      }
+
+      // Close dialog
+      setShowPasswordDialog(false)
+      setResettingUser(null)
+      setNewPassword('')
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to reset password')
+    } finally {
+      setIsResettingPassword(false)
     }
   }
 
@@ -385,9 +575,13 @@ export default function UsersPage() {
                     </Button>
                   </DropdownMenuTrigger>
                   <DropdownMenuContent align="end">
-                    <DropdownMenuItem>
+                    <DropdownMenuItem onClick={() => handleEditUser(user)}>
                       <Edit className="mr-2 h-4 w-4" />
                       Edit
+                    </DropdownMenuItem>
+                    <DropdownMenuItem onClick={() => handleResetPassword(user)}>
+                      <Key className="mr-2 h-4 w-4" />
+                      Reset Password
                     </DropdownMenuItem>
                     <DropdownMenuItem
                       onClick={() => handleToggleUserStatus(user.id, user.is_active)}
@@ -404,6 +598,13 @@ export default function UsersPage() {
                         </>
                       )}
                     </DropdownMenuItem>
+                    <DropdownMenuItem 
+                      onClick={() => handleDeleteUser(user)}
+                      className="text-red-600"
+                    >
+                      <Trash2 className="mr-2 h-4 w-4" />
+                      Delete
+                    </DropdownMenuItem>
                   </DropdownMenuContent>
                 </DropdownMenu>
               </div>
@@ -415,6 +616,164 @@ export default function UsersPage() {
           </div>
         </CardContent>
       </Card>
+
+      {/* Edit User Dialog */}
+      <Dialog open={showEditDialog} onOpenChange={setShowEditDialog}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Edit User</DialogTitle>
+            <DialogDescription>
+              Update user information and role
+            </DialogDescription>
+          </DialogHeader>
+          <form onSubmit={handleUpdateUser} className="space-y-4">
+            <div className="space-y-2">
+              <Label htmlFor="edit-name">Full Name</Label>
+              <Input
+                id="edit-name"
+                value={editFormData.name}
+                onChange={(e) => setEditFormData(prev => ({ ...prev, name: e.target.value }))}
+                placeholder="John Doe"
+                required
+              />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="edit-email">Email Address</Label>
+              <Input
+                id="edit-email"
+                type="email"
+                value={editFormData.email}
+                onChange={(e) => setEditFormData(prev => ({ ...prev, email: e.target.value }))}
+                placeholder="john@restaurant.com"
+                required
+              />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="edit-role">Role</Label>
+              <select
+                id="edit-role"
+                value={editFormData.role}
+                onChange={(e) => setEditFormData(prev => ({ ...prev, role: e.target.value as 'owner' | 'manager' | 'staff' }))}
+                className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
+              >
+                <option value="staff">Staff</option>
+                <option value="manager">Manager</option>
+                <option value="owner">Owner</option>
+              </select>
+            </div>
+            <DialogFooter>
+              <Button type="submit" disabled={isUpdating}>
+                {isUpdating ? (
+                  <>
+                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                    Updating...
+                  </>
+                ) : (
+                  <>
+                    <Save className="mr-2 h-4 w-4" />
+                    Update User
+                  </>
+                )}
+              </Button>
+              <Button 
+                type="button" 
+                variant="outline" 
+                onClick={() => setShowEditDialog(false)}
+              >
+                Cancel
+              </Button>
+            </DialogFooter>
+          </form>
+        </DialogContent>
+      </Dialog>
+
+      {/* Delete User Dialog */}
+      <Dialog open={showDeleteDialog} onOpenChange={setShowDeleteDialog}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Delete User</DialogTitle>
+            <DialogDescription>
+              Are you sure you want to delete {deletingUser?.name}? This action cannot be undone.
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter>
+            <Button 
+              variant="destructive" 
+              onClick={handleConfirmDelete}
+              disabled={isDeleting}
+            >
+              {isDeleting ? (
+                <>
+                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                  Deleting...
+                </>
+              ) : (
+                <>
+                  <Trash2 className="mr-2 h-4 w-4" />
+                  Delete User
+                </>
+              )}
+            </Button>
+            <Button 
+              variant="outline" 
+              onClick={() => setShowDeleteDialog(false)}
+            >
+              Cancel
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Reset Password Dialog */}
+      <Dialog open={showPasswordDialog} onOpenChange={setShowPasswordDialog}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Reset Password</DialogTitle>
+            <DialogDescription>
+              Set a new password for {resettingUser?.name}
+            </DialogDescription>
+          </DialogHeader>
+          <form onSubmit={handleConfirmPasswordReset} className="space-y-4">
+            <div className="space-y-2">
+              <Label htmlFor="new-password">New Password</Label>
+              <Input
+                id="new-password"
+                type="password"
+                value={newPassword}
+                onChange={(e) => setNewPassword(e.target.value)}
+                placeholder="••••••••"
+                required
+                minLength={6}
+              />
+              <p className="text-sm text-muted-foreground">
+                Password must be at least 6 characters long
+              </p>
+            </div>
+            <DialogFooter>
+              <Button type="submit" disabled={isResettingPassword || newPassword.length < 6}>
+                {isResettingPassword ? (
+                  <>
+                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                    Resetting...
+                  </>
+                ) : (
+                  <>
+                    <Key className="mr-2 h-4 w-4" />
+                    Reset Password
+                  </>
+                )}
+              </Button>
+              <Button 
+                type="button" 
+                variant="outline" 
+                onClick={() => setShowPasswordDialog(false)}
+              >
+                Cancel
+              </Button>
+            </DialogFooter>
+          </form>
+        </DialogContent>
+      </Dialog>
     </div>
   )
 }

@@ -1,0 +1,121 @@
+# SumUp Integration Types
+
+Die Hans Restaurant App unterstützt zwei verschiedene Arten der SumUp-Integration:
+
+## 🔑 API Key Integration
+
+Die **API Key Integration** ist die einfachste Methode zur Integration mit SumUp.
+
+### Vorteile:
+- ✅ Einfache Einrichtung
+- ✅ Direkte API-Zugriffe
+- ✅ Keine OAuth-Token-Verwaltung
+
+### Nachteile:
+- ⚠️ Weniger sicher als OAuth
+- ⚠️ API-Keys müssen manuell verwaltet werden
+
+### Einrichtung:
+1. Gehe zu deinem SumUp Developer Dashboard
+2. Erstelle einen neuen API Key
+3. Kopiere den API Key und API Secret
+4. Füge diese in der Hans App unter "SumUp Integration" hinzu
+
+## 🔐 OAuth Integration
+
+Die **OAuth Integration** bietet eine sicherere Methode zur Integration mit SumUp.
+
+### Vorteile:
+- ✅ Höhere Sicherheit
+- ✅ Automatische Token-Erneuerung
+- ✅ Bessere Kontrolle über Berechtigungen
+
+### Nachteile:
+- ⚠️ Komplexere Einrichtung
+- ⚠️ Erfordert OAuth-Flow-Implementierung
+
+### Einrichtung:
+1. Gehe zu deinem SumUp Developer Dashboard
+2. Erstelle eine neue OAuth-Anwendung
+3. Kopiere die Client ID und Client Secret
+4. Füge diese in der Hans App unter "SumUp Integration" hinzu
+
+## 🛠️ Technische Details
+
+### Datenbankstruktur
+
+Die `merchant_codes` Tabelle unterstützt beide Integrationstypen:
+
+```sql
+CREATE TYPE integration_type AS ENUM ('oauth', 'api_key');
+
+ALTER TABLE public.merchant_codes 
+ADD COLUMN integration_type integration_type DEFAULT 'api_key',
+ADD COLUMN oauth_client_id VARCHAR(255),
+ADD COLUMN oauth_client_secret_encrypted TEXT,
+ADD COLUMN oauth_access_token_encrypted TEXT,
+ADD COLUMN oauth_refresh_token_encrypted TEXT,
+ADD COLUMN oauth_token_expires_at TIMESTAMP WITH TIME ZONE,
+ADD COLUMN api_key_encrypted TEXT,
+ADD COLUMN api_secret_encrypted TEXT,
+ADD COLUMN encryption_salt VARCHAR(255);
+```
+
+### Verschlüsselung
+
+Alle sensiblen Daten werden mit AES-256-CBC verschlüsselt:
+
+- **API Keys**: Verschlüsselt mit zufälligem IV
+- **OAuth Secrets**: Verschlüsselt mit zufälligem IV
+- **Salt**: Wird für zusätzliche Sicherheit verwendet
+
+### API-Endpunkte
+
+#### Merchant Codes erstellen
+```http
+POST /api/merchant-codes
+Content-Type: application/json
+Authorization: Bearer <token>
+
+{
+  "merchant_code": "JOSCHI001",
+  "description": "Main Restaurant POS",
+  "integration_type": "api_key", // oder "oauth"
+  "api_key": "your-api-key",     // für API Key Integration
+  "api_secret": "your-api-secret", // für API Key Integration
+  "oauth_client_id": "your-client-id", // für OAuth Integration
+  "oauth_client_secret": "your-client-secret" // für OAuth Integration
+}
+```
+
+#### Merchant Codes abrufen
+```http
+GET /api/merchant-codes
+Authorization: Bearer <token>
+```
+
+Die Antwort enthält den `integration_type` und relevante Felder basierend auf dem Typ.
+
+## 🔄 Migration von API Key zu OAuth
+
+Um von API Key zu OAuth zu wechseln:
+
+1. Erstelle eine neue OAuth-Anwendung in SumUp
+2. Füge die OAuth-Credentials in der Hans App hinzu
+3. Teste die neue Integration
+4. Deaktiviere die alte API Key Integration
+
+## 🚨 Sicherheitshinweise
+
+- **Niemals** API Keys oder OAuth Secrets im Klartext speichern
+- Verwende immer die Verschlüsselung der Hans App
+- Rotiere regelmäßig deine API Keys
+- Überwache die API-Nutzung in deinem SumUp Dashboard
+
+## 📞 Support
+
+Bei Fragen zur SumUp-Integration:
+
+1. Überprüfe die [SumUp API-Dokumentation](https://developer.sumup.com/)
+2. Kontaktiere den Hans Support
+3. Überprüfe die Logs in der Hans App für Fehlerdetails

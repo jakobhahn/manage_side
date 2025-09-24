@@ -24,14 +24,15 @@ function encrypt(text: string): { encrypted: string; iv: string; tag: string } {
   }
 }
 
-function decrypt(encrypted: string, iv: string, tag: string): string {
-  const decipher = crypto.createDecipheriv(ENCRYPTION_ALGORITHM, Buffer.from(ENCRYPTION_KEY, 'hex'), Buffer.from(iv, 'hex'))
-  
-  let decrypted = decipher.update(encrypted, 'hex', 'utf8')
-  decrypted += decipher.final('utf8')
-  
-  return decrypted
-}
+// Decrypt function - currently unused but kept for future use
+// function decrypt(encrypted: string, iv: string, _tag: string): string {
+//   const decipher = crypto.createDecipheriv(ENCRYPTION_ALGORITHM, Buffer.from(ENCRYPTION_KEY, 'hex'), Buffer.from(iv, 'hex'))
+//   
+//   let decrypted = decipher.update(encrypted, 'hex', 'utf8')
+//   decrypted += decipher.final('utf8')
+//   
+//   return decrypted
+// }
 
 export async function GET(request: NextRequest) {
   try {
@@ -76,7 +77,19 @@ export async function GET(request: NextRequest) {
     // Get merchant codes for the user's organization
     const { data: merchantCodes, error: fetchError } = await supabase
       .from('merchant_codes')
-      .select('id, merchant_code, merchant_name, is_active, sync_status, created_at')
+      .select(`
+        id,
+        merchant_code,
+        merchant_name,
+        is_active,
+        created_at,
+        sync_status,
+        last_sync_at,
+        webhook_url,
+        integration_type,
+        oauth_client_id,
+        oauth_token_expires_at
+      `)
       .eq('organization_id', userData.organization_id)
       .order('created_at', { ascending: false })
 
@@ -110,7 +123,17 @@ export async function POST(request: NextRequest) {
     }
 
     const token = authHeader.split(' ')[1]
-    const { merchant_code, description, api_key, api_secret } = await request.json()
+    const { 
+      merchant_code, 
+      description, 
+      integration_type = 'api_key',
+      // OAuth fields
+      oauth_client_id,
+      oauth_client_secret,
+      // API Key fields
+      api_key,
+      api_secret
+    } = await request.json()
 
     if (!merchant_code) {
       return NextResponse.json(
@@ -119,9 +142,24 @@ export async function POST(request: NextRequest) {
       )
     }
 
-    if (!api_key || !api_secret) {
+    // Validate based on integration type
+    if (integration_type === 'oauth') {
+      if (!oauth_client_id || !oauth_client_secret) {
+        return NextResponse.json(
+          { error: { message: 'oauth_client_id and oauth_client_secret are required for OAuth integration' } },
+          { status: 400 }
+        )
+      }
+    } else if (integration_type === 'api_key') {
+      if (!api_key || !api_secret) {
+        return NextResponse.json(
+          { error: { message: 'api_key and api_secret are required for API key integration' } },
+          { status: 400 }
+        )
+      }
+    } else {
       return NextResponse.json(
-        { error: { message: 'api_key and api_secret are required' } },
+        { error: { message: 'integration_type must be either "oauth" or "api_key"' } },
         { status: 400 }
       )
     }
@@ -176,24 +214,39 @@ export async function POST(request: NextRequest) {
       )
     }
 
-    // Encrypt API credentials
-    const encryptedKey = encrypt(api_key)
-    const encryptedSecret = encrypt(api_secret)
-    const salt = crypto.randomBytes(32).toString('hex')
+    // Prepare data based on integration type
+    const insertData: any = {
+      organization_id: userData.organization_id,
+      merchant_code,
+      merchant_name: description || merchant_code,
+      integration_type,
+      is_active: true,
+      sync_status: 'inactive'
+    }
+
+    if (integration_type === 'oauth') {
+      // Encrypt OAuth credentials
+      const encryptedClientSecret = encrypt(oauth_client_secret)
+      const salt = crypto.randomBytes(32).toString('hex')
+      
+      insertData.oauth_client_id = oauth_client_id
+      insertData.oauth_client_secret_encrypted = JSON.stringify(encryptedClientSecret)
+      insertData.encryption_salt = salt
+    } else if (integration_type === 'api_key') {
+      // Encrypt API credentials
+      const encryptedKey = encrypt(api_key)
+      const encryptedSecret = encrypt(api_secret)
+      const salt = crypto.randomBytes(32).toString('hex')
+      
+      insertData.api_key_encrypted = JSON.stringify(encryptedKey)
+      insertData.api_secret_encrypted = JSON.stringify(encryptedSecret)
+      insertData.encryption_salt = salt
+    }
 
     // Insert new merchant code with encrypted credentials
     const { data: newMerchantCode, error: insertError } = await supabase
       .from('merchant_codes')
-      .insert({
-        organization_id: userData.organization_id,
-        merchant_code,
-        merchant_name: description || merchant_code,
-        api_key_encrypted: JSON.stringify(encryptedKey),
-        api_secret_encrypted: JSON.stringify(encryptedSecret),
-        encryption_salt: salt,
-        is_active: true,
-        sync_status: 'inactive'
-      })
+      .insert(insertData)
       .select()
       .single()
 
