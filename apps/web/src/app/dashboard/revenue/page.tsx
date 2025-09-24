@@ -73,7 +73,6 @@ interface ChartData {
 
 export default function RevenuePage() {
   const [revenueData, setRevenueData] = useState<RevenueData[]>([])
-  const [transactionData, setTransactionData] = useState<TransactionData[]>([])
   const [isLoading, setIsLoading] = useState(true)
   const [isRefreshing, setIsRefreshing] = useState(false)
   const [error, setError] = useState<string | null>(null)
