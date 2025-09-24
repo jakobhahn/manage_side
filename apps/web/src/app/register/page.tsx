@@ -103,7 +103,8 @@ export default function RegisterPage() {
       const authData = await authResponse.json()
 
       if (!authResponse.ok) {
-        throw new Error(authData.error || 'Failed to create user account')
+        const errorMessage = authData.error?.message || authData.error || 'Failed to create user account'
+        throw new Error(errorMessage)
       }
 
       // Then create the organization
@@ -124,7 +125,8 @@ export default function RegisterPage() {
       const orgData = await orgResponse.json()
 
       if (!orgResponse.ok) {
-        throw new Error(orgData.error || 'Failed to create organization')
+        const errorMessage = orgData.error?.message || orgData.error || 'Failed to create organization'
+        throw new Error(errorMessage)
       }
 
       // Redirect to dashboard
