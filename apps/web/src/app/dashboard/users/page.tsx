@@ -112,7 +112,6 @@ export default function UsersPage() {
         return
       }
       
-      setIsAuthenticated(true)
       await fetchUsers()
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Authentication failed')

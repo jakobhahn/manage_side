@@ -20,13 +20,6 @@ interface Shift {
   notes?: string
 }
 
-interface User {
-  id: string
-  name: string
-  email: string
-  role: 'owner' | 'manager' | 'staff'
-}
-
 interface UserData {
   id: string
   name: string
