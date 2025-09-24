@@ -213,7 +213,7 @@ export default function RegisterPage() {
             <div className="space-y-2">
               <Label htmlFor="ownerEmail">Email Address</Label>
               <div className="relative">
-                <Mail className="absolute left-3 h-4 w-4 text-gray-400" />
+                <Mail className="absolute left-3 top-3 h-4 w-4 text-gray-400" />
                 <Input
                   id="ownerEmail"
                   type="email"
