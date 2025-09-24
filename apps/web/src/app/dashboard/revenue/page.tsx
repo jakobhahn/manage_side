@@ -52,14 +52,6 @@ interface RevenueData {
   transaction_count: number
 }
 
-interface TransactionData {
-  id: string
-  amount: number
-  currency: string
-  transaction_date: string
-  raw_data: any
-}
-
 interface ChartData {
   labels: string[]
   datasets: {
