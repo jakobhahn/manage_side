@@ -15,8 +15,6 @@ import {
   DollarSign,
   TrendingUp,
   Calendar,
-  Users,
-  Clock,
   RefreshCw
 } from 'lucide-react'
 import { LogoutButton } from '@/components/logout-button'
