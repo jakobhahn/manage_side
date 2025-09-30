@@ -277,7 +277,7 @@ export default function ForecastPage() {
 
     // Group by weeks
     const weeks = []
-    let currentWeek = []
+    let currentWeek: any[] = []
     
     calendarDays.forEach(day => {
       if (day.date.getDay() === 1 && currentWeek.length > 0) {

@@ -343,7 +343,7 @@ export default function AnalyticsPage() {
     if (!analyticsData?.hours) return null
 
     const maxRevenue = getMaxValue(analyticsData.hours, 'revenue')
-    const maxTransactions = getMaxValue(analyticsData.hours, 'transactions')
+    // const maxTransactions = getMaxValue(analyticsData.hours, 'transactions')
 
     return (
       <div className="space-y-4">

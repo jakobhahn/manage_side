@@ -60,7 +60,7 @@ async function fetchAllSumUpTransactions(
       pageCount++
       console.log(`📄 Fetching page ${pageCount}...`)
       
-      const response = await fetch(nextPageUrl, {
+      const response: Response = await fetch(nextPageUrl, {
         method: 'GET',
         headers: {
           'Authorization': `Bearer ${accessToken}`,

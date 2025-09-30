@@ -1,11 +1,11 @@
 'use client'
 
-import { useEffect, useState } from 'react'
+import { useEffect, useState, Suspense } from 'react'
 import { useRouter, useSearchParams } from 'next/navigation'
 import { createClient } from '@supabase/supabase-js'
 import { CheckCircle, Loader2 } from 'lucide-react'
 
-export default function OAuthSuccessPage() {
+function OAuthSuccessContent() {
   const [isLoading, setIsLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const router = useRouter()
@@ -99,5 +99,21 @@ export default function OAuthSuccessPage() {
         <p className="text-gray-600">Sie werden zum Dashboard weitergeleitet...</p>
       </div>
     </div>
+  )
+}
+
+export default function OAuthSuccessPage() {
+  return (
+    <Suspense fallback={
+      <div className="min-h-screen bg-gray-50 flex items-center justify-center">
+        <div className="text-center">
+          <Loader2 className="h-8 w-8 animate-spin text-blue-600 mx-auto mb-4" />
+          <h2 className="text-xl font-semibold text-gray-900 mb-2">Lade...</h2>
+          <p className="text-gray-600">Bitte warten Sie einen Moment.</p>
+        </div>
+      </div>
+    }>
+      <OAuthSuccessContent />
+    </Suspense>
   )
 }

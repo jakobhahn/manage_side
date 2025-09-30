@@ -314,13 +314,21 @@ export default function DashboardPage() {
       }
 
       // Update last login timestamp
-      await fetch('/api/users/update-login', {
-        method: 'POST',
-        headers: {
-          'Authorization': `Bearer ${session.access_token}`,
-          'Content-Type': 'application/json',
-        },
-      })
+      try {
+        const loginResponse = await fetch('/api/users/update-login', {
+          method: 'POST',
+          headers: {
+            'Authorization': `Bearer ${session.access_token}`,
+            'Content-Type': 'application/json',
+          },
+        })
+        
+        if (!loginResponse.ok) {
+          console.warn('⚠️ Failed to update login timestamp:', loginResponse.status)
+        }
+      } catch (loginError) {
+        console.warn('⚠️ Login timestamp update failed:', loginError)
+      }
 
       // Fetch organization data
       const orgResponse = await fetch('/api/organizations/me', {
@@ -331,11 +339,15 @@ export default function DashboardPage() {
       })
       
       if (!orgResponse.ok) {
+        console.error('❌ Organization API error:', orgResponse.status, orgResponse.statusText)
         if (orgResponse.status === 401) {
+          console.error('❌ Unauthorized - redirecting to login')
           router.push('/login')
           return
         }
-        throw new Error('Failed to fetch organization data')
+        const errorText = await orgResponse.text()
+        console.error('❌ Organization API error details:', errorText)
+        throw new Error(`Failed to fetch organization data: ${orgResponse.status} ${orgResponse.statusText}`)
       }
       
       const orgData = await orgResponse.json()
@@ -349,17 +361,33 @@ export default function DashboardPage() {
       }
 
       // Fetch team members count
-      await fetchTeamMembersCount()
+      try {
+        await fetchTeamMembersCount()
+      } catch (error) {
+        console.warn('⚠️ Failed to fetch team members count:', error)
+      }
       
       // Fetch direct transaction data first (more accurate)
-      await fetchDirectTransactionData()
+      try {
+        await fetchDirectTransactionData()
+      } catch (error) {
+        console.warn('⚠️ Failed to fetch direct transaction data:', error)
+      }
       
       // Fetch transaction statistics as fallback
-      await fetchTransactionStats()
+      try {
+        await fetchTransactionStats()
+      } catch (error) {
+        console.warn('⚠️ Failed to fetch transaction stats:', error)
+      }
       
       // Fetch forecast data after organization is set
       if (orgData.organization?.id) {
-        await fetchForecastData(orgData.organization.id)
+        try {
+          await fetchForecastData(orgData.organization.id)
+        } catch (error) {
+          console.warn('⚠️ Failed to fetch forecast data:', error)
+        }
       }
     } catch (error: any) {
       console.error('Failed to fetch dashboard data:', error)

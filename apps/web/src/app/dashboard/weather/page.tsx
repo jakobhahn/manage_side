@@ -1,24 +1,23 @@
 'use client'
 
 import { useState, useEffect } from 'react'
-import { createClient } from '@supabase/supabase-js'
-import { useRouter } from 'next/navigation'
 import { 
   ArrowLeft, 
   RefreshCw, 
   Cloud,
   Sun,
   CloudRain,
+  // CloudSnow,
+  Wind,
   Thermometer,
   Droplets,
-  Wind,
   Eye,
   Clock,
   MapPin
 } from 'lucide-react'
-import Link from 'next/link'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
+import Link from 'next/link'
 
 interface WeatherData {
   date: string
@@ -29,7 +28,6 @@ interface WeatherData {
   wind_speed: number
   humidity: number
   pressure: number
-  updated_at: string
 }
 
 export default function WeatherPage() {
@@ -38,12 +36,6 @@ export default function WeatherPage() {
   const [isSyncing, setIsSyncing] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [lastSync, setLastSync] = useState<string | null>(null)
-  
-  const supabase = createClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
-  )
-  const router = useRouter()
 
   useEffect(() => {
     fetchWeatherData()
@@ -53,18 +45,18 @@ export default function WeatherPage() {
     try {
       setIsLoading(true)
       setError(null)
-
+      
       const response = await fetch('/api/weather/sync')
-      if (response.ok) {
-        const data = await response.json()
-        setWeatherData(data.data || [])
-        setLastSync(data.data?.[0]?.updated_at || null)
-      } else {
+      if (!response.ok) {
         throw new Error('Failed to fetch weather data')
       }
-    } catch (error: any) {
-      console.error('Error fetching weather data:', error)
-      setError(error.message)
+      
+      const data = await response.json()
+      setWeatherData(data.weatherData || [])
+      setLastSync(data.lastSync || new Date().toISOString())
+    } catch (err) {
+      console.error('Error fetching weather data:', err)
+      setError(err instanceof Error ? err.message : 'Unknown error')
     } finally {
       setIsLoading(false)
     }
@@ -74,84 +66,45 @@ export default function WeatherPage() {
     try {
       setIsSyncing(true)
       setError(null)
-
+      
       const response = await fetch('/api/weather/sync', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
+        method: 'POST'
       })
-
+      
       if (!response.ok) {
         throw new Error('Failed to sync weather data')
       }
-
-      const result = await response.json()
-      console.log('Weather sync result:', result)
       
-      // Aktualisiere die Daten nach dem Sync
-      await fetchWeatherData()
-    } catch (error: any) {
-      console.error('Error syncing weather data:', error)
-      setError(error.message)
+      const data = await response.json()
+      setWeatherData(data.weatherData || [])
+      setLastSync(data.lastSync || new Date().toISOString())
+    } catch (err) {
+      console.error('Error syncing weather data:', err)
+      setError(err instanceof Error ? err.message : 'Unknown error')
     } finally {
       setIsSyncing(false)
     }
   }
 
   const getWeatherIcon = (weatherCode: number) => {
-    if (weatherCode >= 80) {
-      return <CloudRain className="h-5 w-5 text-blue-600" />
-    } else if (weatherCode >= 60) {
-      return <CloudRain className="h-5 w-5 text-blue-500" />
-    } else if (weatherCode >= 40) {
-      return <Cloud className="h-5 w-5 text-gray-400" />
-    } else if (weatherCode >= 20) {
-      return <Cloud className="h-5 w-5 text-gray-500" />
-    } else if (weatherCode >= 10) {
-      return <Cloud className="h-5 w-5 text-gray-300" />
-    } else {
-      return <Sun className="h-5 w-5 text-yellow-500" />
-    }
+    if (weatherCode >= 80) return <CloudRain className="h-5 w-5 text-blue-500" />
+    if (weatherCode >= 60) return <CloudRain className="h-5 w-5 text-blue-400" />
+    if (weatherCode >= 40) return <Cloud className="h-5 w-5 text-gray-500" />
+    if (weatherCode >= 20) return <Cloud className="h-5 w-5 text-gray-400" />
+    if (weatherCode >= 10) return <Cloud className="h-5 w-5 text-gray-300" />
+    return <Sun className="h-5 w-5 text-yellow-500" />
   }
-
-  const getWeatherDescription = (weatherCode: number) => {
-    if (weatherCode >= 80) return 'Regen/Gewitter'
-    if (weatherCode >= 60) return 'Leichter Regen'
-    if (weatherCode >= 40) return 'Nebel'
-    if (weatherCode >= 20) return 'Bewölkt'
-    if (weatherCode >= 10) return 'Teilweise bewölkt'
-    return 'Klar/Sonnig'
-  }
-
-  const formatDate = (date: string) => {
-    return new Date(date).toLocaleDateString('de-DE', {
-      weekday: 'short',
-      year: 'numeric',
-      month: 'short',
-      day: 'numeric'
-    })
-  }
-
-  const formatTime = (hour: number) => {
-    return `${hour.toString().padStart(2, '0')}:00`
-  }
-
-  // Gruppiere Daten nach Tagen
-  const groupedData = weatherData.reduce((acc, item) => {
-    if (!acc[item.date]) {
-      acc[item.date] = []
-    }
-    acc[item.date].push(item)
-    return acc
-  }, {} as Record<string, WeatherData[]>)
 
   if (isLoading) {
     return (
-      <div className="min-h-screen bg-gray-50 flex items-center justify-center">
-        <div className="text-center">
-          <RefreshCw className="h-8 w-8 animate-spin text-gray-400 mx-auto mb-4" />
-          <p className="text-gray-600">Lade Wetterdaten...</p>
+      <div className="min-h-screen bg-gray-50 p-4">
+        <div className="max-w-4xl mx-auto">
+          <div className="flex items-center justify-center h-64">
+            <div className="text-center">
+              <RefreshCw className="h-8 w-8 animate-spin mx-auto mb-4 text-blue-600" />
+              <p className="text-gray-600">Lade Wetterdaten...</p>
+            </div>
+          </div>
         </div>
       </div>
     )
@@ -159,244 +112,178 @@ export default function WeatherPage() {
 
   if (error) {
     return (
-      <div className="min-h-screen bg-gray-50 flex items-center justify-center">
-        <div className="text-center">
-          <h2 className="text-xl font-semibold text-red-600 mb-2">Fehler</h2>
-          <p className="text-gray-600 mb-4">{error}</p>
-          <Button onClick={fetchWeatherData}>
-            Erneut versuchen
-          </Button>
+      <div className="min-h-screen bg-gray-50 p-4">
+        <div className="max-w-4xl mx-auto">
+          <div className="flex items-center justify-center h-64">
+            <div className="text-center">
+              <Cloud className="h-8 w-8 mx-auto mb-4 text-red-500" />
+              <p className="text-red-600 mb-4">Fehler beim Laden der Wetterdaten</p>
+              <p className="text-gray-600 mb-4">{error}</p>
+              <Button onClick={fetchWeatherData} variant="outline">
+                <RefreshCw className="h-4 w-4 mr-2" />
+                Erneut versuchen
+              </Button>
+            </div>
+          </div>
         </div>
       </div>
     )
   }
 
   return (
-    <div className="min-h-screen bg-gray-50">
-      {/* Header */}
-      <div className="bg-white border-b border-gray-200">
-        <div className="px-4 sm:px-6 lg:px-8">
-          <div className="py-4">
-            {/* Mobile Layout */}
-            <div className="block sm:hidden">
-              <div className="flex items-center justify-between">
-                <Link 
-                  href="/dashboard" 
-                  className="flex items-center space-x-2 text-gray-600 hover:text-gray-900 transition-colors"
-                >
-                  <ArrowLeft className="h-4 w-4" />
-                  <span className="text-sm font-medium">Zurück zum Dashboard</span>
-                </Link>
-                
-                <button 
-                  onClick={syncWeatherData}
-                  disabled={isSyncing}
-                  className="bg-gray-900 text-white p-2 rounded-xl hover:bg-gray-800 transition-colors disabled:opacity-50"
-                >
-                  <RefreshCw className={`h-4 w-4 ${isSyncing ? 'animate-spin' : ''}`} />
-                </button>
-              </div>
+    <div className="min-h-screen bg-gray-50 p-4">
+      <div className="max-w-4xl mx-auto">
+        {/* Header */}
+        <div className="mb-6">
+          <Link href="/dashboard" className="inline-flex items-center text-blue-600 hover:text-blue-800 mb-4">
+            <ArrowLeft className="h-4 w-4 mr-2" />
+            Zurück zum Dashboard
+          </Link>
+          
+          <div className="flex items-center justify-between">
+            <div>
+              <h1 className="text-2xl font-bold text-gray-900">Wetter-Synchronisation</h1>
+              <p className="text-gray-600">Aktuelle Wetterdaten für Hamburg</p>
             </div>
             
-            {/* Desktop Layout */}
-            <div className="hidden sm:flex items-center justify-between">
-              <Link 
-                href="/dashboard" 
-                className="flex items-center space-x-2 text-gray-600 hover:text-gray-900 transition-colors"
-              >
-                <ArrowLeft className="h-4 w-4" />
-                <span className="text-sm font-medium">Zurück zum Dashboard</span>
-              </Link>
-              
-              <button 
-                onClick={syncWeatherData}
-                disabled={isSyncing}
-                className="bg-gray-900 text-white p-2 rounded-xl hover:bg-gray-800 transition-colors disabled:opacity-50"
-              >
-                <RefreshCw className={`h-4 w-4 ${isSyncing ? 'animate-spin' : ''}`} />
-              </button>
-            </div>
+            <Button 
+              onClick={syncWeatherData} 
+              disabled={isSyncing}
+              className="flex items-center"
+            >
+              <RefreshCw className={`h-4 w-4 mr-2 ${isSyncing ? 'animate-spin' : ''}`} />
+              {isSyncing ? 'Synchronisiere...' : 'Jetzt synchronisieren'}
+            </Button>
           </div>
         </div>
-      </div>
 
-      {/* Content */}
-      <div className="container mx-auto p-4 sm:p-6 space-y-4 sm:space-y-6">
-        {/* Page Title */}
-        <div>
-          <h1 className="text-2xl font-bold text-gray-900">Wetter-Management</h1>
-          <p className="text-sm text-gray-600">Stündliche Wetterdaten für Hamburg, Seilerstraße 40</p>
+        {/* Status Cards */}
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
+          <Card>
+            <CardHeader className="pb-2">
+              <CardTitle className="text-sm font-medium text-gray-600">Status</CardTitle>
+            </CardHeader>
+            <CardContent>
+              <div className="flex items-center">
+                <Cloud className="h-4 w-4 text-green-500 mr-2" />
+                <span className="text-sm">Aktiv</span>
+              </div>
+            </CardContent>
+          </Card>
+
+          <Card>
+            <CardHeader className="pb-2">
+              <CardTitle className="text-sm font-medium text-gray-600">Letzte Synchronisation</CardTitle>
+            </CardHeader>
+            <CardContent>
+              <div className="flex items-center">
+                <Clock className="h-4 w-4 text-blue-500 mr-2" />
+                <span className="text-sm">
+                  {lastSync ? new Date(lastSync).toLocaleString('de-DE') : 'Nie'}
+                </span>
+              </div>
+            </CardContent>
+          </Card>
+
+          <Card>
+            <CardHeader className="pb-2">
+              <CardTitle className="text-sm font-medium text-gray-600">Standort</CardTitle>
+            </CardHeader>
+            <CardContent>
+              <div className="flex items-center">
+                <MapPin className="h-4 w-4 text-red-500 mr-2" />
+                <span className="text-sm">Hamburg, Deutschland</span>
+              </div>
+            </CardContent>
+          </Card>
         </div>
-
-        {/* Location Info */}
-        <Card>
-          <CardHeader>
-            <CardTitle className="text-lg flex items-center">
-              <MapPin className="h-5 w-5 mr-2" />
-              Standort
-            </CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="flex items-center space-x-4">
-              <div>
-                <p className="font-medium">Seilerstraße 40</p>
-                <p className="text-sm text-gray-600">20359 Hamburg, Deutschland</p>
-                <p className="text-xs text-gray-500">Koordinaten: 53.5511°N, 9.9937°E</p>
-              </div>
-              <div className="text-right">
-                <p className="text-sm text-gray-600">Datenquelle:</p>
-                <a 
-                  href="https://open-meteo.com/" 
-                  target="_blank" 
-                  rel="noopener noreferrer"
-                  className="text-sm text-blue-600 hover:underline"
-                >
-                  Open-Meteo API
-                </a>
-              </div>
-            </div>
-          </CardContent>
-        </Card>
-
-        {/* Sync Status */}
-        <Card>
-          <CardHeader>
-            <CardTitle className="text-lg flex items-center">
-              <Clock className="h-5 w-5 mr-2" />
-              Synchronisation
-            </CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="text-sm text-gray-600">
-                  Letzte Synchronisation: {lastSync ? new Date(lastSync).toLocaleString('de-DE') : 'Nie'}
-                </p>
-                <p className="text-xs text-gray-500">
-                  Gespeicherte Datenpunkte: {weatherData.length}
-                </p>
-              </div>
-              <Button 
-                onClick={syncWeatherData}
-                disabled={isSyncing}
-                className="flex items-center space-x-2"
-              >
-                <RefreshCw className={`h-4 w-4 ${isSyncing ? 'animate-spin' : ''}`} />
-                <span>{isSyncing ? 'Synchronisiere...' : 'Jetzt synchronisieren'}</span>
-              </Button>
-            </div>
-          </CardContent>
-        </Card>
 
         {/* Weather Data */}
         <Card>
           <CardHeader>
-            <CardTitle className="text-lg">Wetterdaten</CardTitle>
+            <CardTitle>Aktuelle Wetterdaten</CardTitle>
             <CardDescription>
-              Stündliche Wetterdaten der letzten Tage
+              Stündliche Wetterdaten für Hamburg (Seilerstraße 40)
             </CardDescription>
           </CardHeader>
           <CardContent>
-            {Object.keys(groupedData).length === 0 ? (
+            {weatherData.length === 0 ? (
               <div className="text-center py-8">
-                <Cloud className="h-12 w-12 text-gray-400 mx-auto mb-4" />
+                <Cloud className="h-12 w-12 mx-auto text-gray-400 mb-4" />
                 <p className="text-gray-600">Keine Wetterdaten verfügbar</p>
-                <p className="text-sm text-gray-500">Klicken Sie auf "Jetzt synchronisieren" um Daten zu laden</p>
+                <p className="text-sm text-gray-500 mt-2">
+                  Klicken Sie auf "Jetzt synchronisieren", um Wetterdaten zu laden.
+                </p>
               </div>
             ) : (
-              <div className="space-y-6">
-                {Object.entries(groupedData)
-                  .sort(([a], [b]) => new Date(b).getTime() - new Date(a).getTime())
-                  .slice(0, 7) // Zeige nur die letzten 7 Tage
-                  .map(([date, dayData]) => (
-                    <div key={date} className="border rounded-lg p-4">
-                      <h3 className="font-semibold text-gray-900 mb-3">
-                        {formatDate(date)}
-                      </h3>
-                      <div className="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-6 xl:grid-cols-8 gap-2">
-                        {dayData
-                          .sort((a, b) => a.hour - b.hour)
-                          .map((hourData) => (
-                            <div 
-                              key={`${date}-${hourData.hour}`}
-                              className="bg-gray-50 rounded-lg p-3 text-center"
-                            >
-                              <div className="text-xs text-gray-600 mb-1">
-                                {formatTime(hourData.hour)}
-                              </div>
-                              <div className="flex justify-center mb-1">
-                                {getWeatherIcon(hourData.weather_code)}
-                              </div>
-                              <div className="text-sm font-medium text-gray-900">
-                                {hourData.temperature}°C
-                              </div>
-                              <div className="text-xs text-gray-500">
-                                {hourData.precipitation}mm
-                              </div>
-                              <div className="text-xs text-gray-500">
-                                {hourData.wind_speed}km/h
-                              </div>
-                            </div>
-                          ))}
+              <div className="space-y-4">
+                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                  {weatherData.slice(0, 6).map((item, index) => (
+                    <div key={index} className="border rounded-lg p-4">
+                      <div className="flex items-center justify-between mb-2">
+                        <div className="flex items-center">
+                          {getWeatherIcon(item.weather_code)}
+                          <span className="ml-2 text-sm font-medium">
+                            {new Date(item.date).toLocaleDateString('de-DE')} {item.hour}:00
+                          </span>
+                        </div>
+                      </div>
+                      
+                      <div className="space-y-1">
+                        <div className="flex items-center text-sm">
+                          <Thermometer className="h-4 w-4 text-red-500 mr-2" />
+                          <span>{item.temperature.toFixed(1)}°C</span>
+                        </div>
+                        
+                        <div className="flex items-center text-sm">
+                          <Droplets className="h-4 w-4 text-blue-500 mr-2" />
+                          <span>{item.precipitation.toFixed(1)}mm</span>
+                        </div>
+                        
+                        <div className="flex items-center text-sm">
+                          <Wind className="h-4 w-4 text-gray-500 mr-2" />
+                          <span>{item.wind_speed.toFixed(1)} km/h</span>
+                        </div>
+                        
+                        <div className="flex items-center text-sm">
+                          <Eye className="h-4 w-4 text-gray-500 mr-2" />
+                          <span>{item.humidity.toFixed(0)}%</span>
+                        </div>
                       </div>
                     </div>
                   ))}
+                </div>
+                
+                {weatherData.length > 6 && (
+                  <div className="text-center text-sm text-gray-500">
+                    ... und {weatherData.length - 6} weitere Einträge
+                  </div>
+                )}
               </div>
             )}
           </CardContent>
         </Card>
 
-        {/* Weather Summary */}
-        {weatherData.length > 0 && (
-          <Card>
-            <CardHeader>
-              <CardTitle className="text-lg">Wetter-Übersicht</CardTitle>
-            </CardHeader>
-            <CardContent>
-              <div className="grid gap-4 md:grid-cols-4">
-                <div className="flex items-center space-x-3">
-                  <Thermometer className="h-8 w-8 text-red-500" />
-                  <div>
-                    <p className="text-sm text-gray-600">Durchschnittstemperatur</p>
-                    <p className="text-lg font-semibold">
-                      {Math.round(weatherData.reduce((sum, d) => sum + d.temperature, 0) / weatherData.length * 10) / 10}°C
-                    </p>
-                  </div>
-                </div>
-                
-                <div className="flex items-center space-x-3">
-                  <Droplets className="h-8 w-8 text-blue-500" />
-                  <div>
-                    <p className="text-sm text-gray-600">Gesamtniederschlag</p>
-                    <p className="text-lg font-semibold">
-                      {Math.round(weatherData.reduce((sum, d) => sum + d.precipitation, 0) * 10) / 10}mm
-                    </p>
-                  </div>
-                </div>
-                
-                <div className="flex items-center space-x-3">
-                  <Wind className="h-8 w-8 text-gray-500" />
-                  <div>
-                    <p className="text-sm text-gray-600">Durchschnittswind</p>
-                    <p className="text-lg font-semibold">
-                      {Math.round(weatherData.reduce((sum, d) => sum + d.wind_speed, 0) / weatherData.length * 10) / 10}km/h
-                    </p>
-                  </div>
-                </div>
-                
-                <div className="flex items-center space-x-3">
-                  <Eye className="h-8 w-8 text-green-500" />
-                  <div>
-                    <p className="text-sm text-gray-600">Durchschnittsfeuchte</p>
-                    <p className="text-lg font-semibold">
-                      {Math.round(weatherData.reduce((sum, d) => sum + d.humidity, 0) / weatherData.length)}%
-                    </p>
-                  </div>
-                </div>
-              </div>
-            </CardContent>
-          </Card>
-        )}
+        {/* Info Card */}
+        <Card className="mt-6">
+          <CardHeader>
+            <CardTitle className="text-sm">Informationen</CardTitle>
+          </CardHeader>
+          <CardContent className="text-sm text-gray-600">
+            <p className="mb-2">
+              <strong>Datenquelle:</strong> Open-Meteo API (https://open-meteo.com/)
+            </p>
+            <p className="mb-2">
+              <strong>Standort:</strong> Seilerstraße 40, 20359 Hamburg, Deutschland
+            </p>
+            <p className="mb-2">
+              <strong>Koordinaten:</strong> 53.5511°N, 9.9937°E
+            </p>
+            <p>
+              <strong>Update-Frequenz:</strong> Stündlich (automatisch via Cron Job)
+            </p>
+          </CardContent>
+        </Card>
       </div>
     </div>
   )

@@ -17,7 +17,7 @@ interface WeatherData {
   pressure: number
 }
 
-export async function POST(request: NextRequest) {
+export async function POST(_request: NextRequest) {
   try {
     console.log('🌤️ Starting hourly weather data sync...')
 

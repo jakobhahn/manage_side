@@ -493,14 +493,11 @@ export async function POST(request: NextRequest) {
     // If we get here, no endpoint worked
         return NextResponse.json({
           success: false,
-          message: `No transactions found for ${date}. The SumUp API returned ${allTransactions.length} transactions, but none match the requested date.`,
+          message: `No transactions found for ${date}. The SumUp API returned 0 transactions, but none match the requested date.`,
           date: date,
           merchantCode: merchantCode,
           triedEndpoints: endpoints.length,
-          apiDataRange: allTransactions.length > 0 ? {
-            oldest: allTransactions.map(t => t.timestamp || t.created_at || t.date || t.time).filter(Boolean).sort()[0],
-            newest: allTransactions.map(t => t.timestamp || t.created_at || t.date || t.time).filter(Boolean).sort().pop()
-          } : null,
+          apiDataRange: null,
           suggestion: "The SumUp API seems to only return historical test data. Please check if your merchant account has current transactions or if you need to use different dates."
         })
 
