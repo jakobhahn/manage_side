@@ -9,7 +9,7 @@ VALUES (
   'joschi-pizza-bistro',
   NOW(),
   NOW()
-) ON CONFLICT (id) DO NOTHING;
+) ON CONFLICT (slug) DO NOTHING;
 
 -- Create test user in auth.users (this would normally be done via Supabase Auth)
 -- Note: In a real scenario, this would be created via the signup API
@@ -196,10 +196,25 @@ VALUES
   )
 ON CONFLICT (id) DO NOTHING;
 
+-- Create Jakob user with custom password
+INSERT INTO public.users (id, auth_id, organization_id, name, email, role, created_at, updated_at)
+VALUES 
+  (
+    '550e8400-e29b-41d4-a716-446655440001',
+    '550e8400-e29b-41d4-a716-446655440002',
+    '550e8400-e29b-41d4-a716-446655440000',
+    'Jakob',
+    'jakob@klapp.pizza',
+    'owner',
+    NOW(),
+    NOW()
+  )
+ON CONFLICT (id) DO NOTHING;
+
 -- Print success message
 DO $$
 BEGIN
     RAISE NOTICE 'Seed data inserted successfully for Joschi Pizza Bistro';
-    RAISE NOTICE 'Test credentials: jakob@klapp.pizza / adminadmin';
+    RAISE NOTICE 'Test credentials: jakob@klapp.pizza / asqw1212';
     RAISE NOTICE 'Organization: Joschi Pizza Bistro (joschi-pizza-bistro)';
 END $$;

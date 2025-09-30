@@ -192,7 +192,12 @@ export default function RevenuePage() {
   }
 
   const getRevenueChartData = (): ChartData => {
-    const labels = revenueData.map(item => {
+    // Sort data by period_start date (chronological order)
+    const sortedData = [...revenueData].sort((a, b) => 
+      new Date(a.period_start).getTime() - new Date(b.period_start).getTime()
+    )
+
+    const labels = sortedData.map(item => {
       const date = new Date(item.period_start)
       if (selectedPeriod === 'daily') {
         return date.toLocaleDateString('de-DE', { day: '2-digit', month: '2-digit' })
@@ -210,7 +215,7 @@ export default function RevenuePage() {
       datasets: [
         {
           label: 'Revenue (€)',
-          data: revenueData.map(item => item.total_revenue),
+          data: sortedData.map(item => item.total_revenue),
           backgroundColor: 'rgba(59, 130, 246, 0.5)',
           borderColor: 'rgba(59, 130, 246, 1)',
           borderWidth: 2
@@ -220,7 +225,12 @@ export default function RevenuePage() {
   }
 
   const getTransactionChartData = (): ChartData => {
-    const labels = revenueData.map(item => {
+    // Sort data by period_start date (chronological order)
+    const sortedData = [...revenueData].sort((a, b) => 
+      new Date(a.period_start).getTime() - new Date(b.period_start).getTime()
+    )
+
+    const labels = sortedData.map(item => {
       const date = new Date(item.period_start)
       if (selectedPeriod === 'daily') {
         return date.toLocaleDateString('de-DE', { day: '2-digit', month: '2-digit' })
@@ -238,7 +248,7 @@ export default function RevenuePage() {
       datasets: [
         {
           label: 'Transactions',
-          data: revenueData.map(item => item.transaction_count),
+          data: sortedData.map(item => item.transaction_count),
           backgroundColor: 'rgba(16, 185, 129, 0.5)',
           borderColor: 'rgba(16, 185, 129, 1)',
           borderWidth: 2

@@ -6,7 +6,7 @@ const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY!
 
 export async function POST(request: NextRequest) {
   try {
-    const { email, password, name } = await request.json()
+    const { email, password, name, organizationName, organizationSlug } = await request.json()
 
     if (!email || !password || !name) {
       return NextResponse.json(
@@ -42,6 +42,43 @@ export async function POST(request: NextRequest) {
         { error: { message: 'Failed to create user' } },
         { status: 500 }
       )
+    }
+
+    // If organization info is provided, create user profile and link to organization
+    if (organizationName && organizationSlug) {
+      // Find the organization
+      const { data: organization, error: orgError } = await supabase
+        .from('organizations')
+        .select('id')
+        .eq('slug', organizationSlug)
+        .single()
+
+      if (orgError || !organization) {
+        console.error('Organization not found:', orgError)
+        return NextResponse.json(
+          { error: { message: 'Organization not found' } },
+          { status: 400 }
+        )
+      }
+
+      // Create user profile
+      const { error: profileError } = await supabase
+        .from('users')
+        .insert({
+          auth_id: authData.user.id,
+          organization_id: organization.id,
+          name,
+          email,
+          role: 'owner',
+        })
+
+      if (profileError) {
+        console.error('Profile creation error:', profileError)
+        return NextResponse.json(
+          { error: { message: 'Failed to create user profile' } },
+          { status: 500 }
+        )
+      }
     }
 
     return NextResponse.json({

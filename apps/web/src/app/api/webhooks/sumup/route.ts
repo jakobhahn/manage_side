@@ -12,10 +12,15 @@ function verifySumUpSignature(payload: string, signature: string, secret: string
     .update(payload)
     .digest('hex')
   
-  return crypto.timingSafeEqual(
-    Buffer.from(signature, 'hex'),
-    Buffer.from(expectedSignature, 'hex')
-  )
+  // Ensure both signatures have the same length
+  const signatureBuffer = Buffer.from(signature, 'hex')
+  const expectedBuffer = Buffer.from(expectedSignature, 'hex')
+  
+  if (signatureBuffer.length !== expectedBuffer.length) {
+    return false
+  }
+  
+  return crypto.timingSafeEqual(signatureBuffer, expectedBuffer)
 }
 
 export async function POST(request: NextRequest) {
@@ -23,6 +28,12 @@ export async function POST(request: NextRequest) {
     const payload = await request.text()
     const signature = request.headers.get('x-sumup-signature')
     const webhookSecret = process.env.SUMUP_WEBHOOK_SECRET
+
+    console.log('Webhook received:', { 
+      hasSignature: !!signature, 
+      hasSecret: !!webhookSecret,
+      payloadLength: payload.length 
+    })
 
     if (!signature || !webhookSecret) {
       console.error('Missing SumUp webhook signature or secret')
@@ -70,6 +81,8 @@ export async function POST(request: NextRequest) {
         transaction_id: transaction.id,
         amount: parseFloat(transaction.amount),
         currency: transaction.currency,
+        status: 'completed', // Set default status
+        merchant_code: transaction.merchant_code, // Add merchant code
         transaction_date: new Date(transaction.timestamp),
         raw_data: transaction
       })

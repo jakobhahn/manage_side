@@ -13,7 +13,9 @@ import {
   Settings,
   CreditCard,
   LogOut,
-  Loader2
+  Loader2,
+  TrendingUp,
+  Cloud
 } from 'lucide-react'
 import Link from 'next/link'
 
@@ -37,6 +39,12 @@ export default function DashboardPage() {
   const [user, setUser] = useState<User | null>(null)
   const [isLoading, setIsLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
+  const [teamMembersCount, setTeamMembersCount] = useState<number>(0)
+  const [totalTransactions, setTotalTransactions] = useState<number>(0)
+  const [lastSyncDate, setLastSyncDate] = useState<string | null>(null)
+  const [todayRevenue, setTodayRevenue] = useState<number>(0)
+  const [forecastData, setForecastData] = useState<any>(null)
+  const [sumupMessage, setSumupMessage] = useState<{type: 'success' | 'error', message: string} | null>(null)
   const supabase = createClient(
     process.env.NEXT_PUBLIC_SUPABASE_URL!,
     process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
@@ -45,7 +53,244 @@ export default function DashboardPage() {
 
   useEffect(() => {
     fetchDashboardData()
+    
+    // Check for SumUp OAuth success/error messages in URL
+    const urlParams = new URLSearchParams(window.location.search)
+    const sumupSuccess = urlParams.get('sumup_success')
+    const sumupError = urlParams.get('sumup_error')
+    const errorDescription = urlParams.get('error_description')
+    const merchantCode = urlParams.get('merchant_code')
+    
+    if (sumupSuccess === 'oauth_connected') {
+      setSumupMessage({
+        type: 'success',
+        message: `SumUp OAuth erfolgreich verbunden! Merchant Code: ${merchantCode}`
+      })
+      // Clean up URL
+      window.history.replaceState({}, document.title, window.location.pathname)
+    } else if (sumupError) {
+      setSumupMessage({
+        type: 'error',
+        message: `SumUp OAuth Fehler: ${errorDescription || sumupError}`
+      })
+      // Clean up URL
+      window.history.replaceState({}, document.title, window.location.pathname)
+    }
   }, [])
+
+  const fetchTeamMembersCount = async () => {
+    try {
+      const { data: { session } } = await supabase.auth.getSession()
+      
+      if (!session) {
+        console.log('No session for team members count')
+        return
+      }
+
+      console.log('Fetching team members count...')
+      const response = await fetch('/api/users', {
+        headers: {
+          'Authorization': `Bearer ${session.access_token}`,
+          'Content-Type': 'application/json',
+        },
+      })
+
+      console.log('Team members API response:', response.status)
+      if (response.ok) {
+        const data = await response.json()
+        const count = data.users?.length || 0
+        console.log('Team members count:', count)
+        setTeamMembersCount(count)
+      } else {
+        console.error('Failed to fetch team members:', response.status)
+        setTeamMembersCount(0)
+      }
+    } catch (err) {
+      console.error('Error fetching team members count:', err)
+      setTeamMembersCount(0)
+    }
+  }
+
+  const fetchTransactionStats = async () => {
+    try {
+      const { data: { session } } = await supabase.auth.getSession()
+      
+      if (!session) {
+        console.log('No session for transaction stats')
+        return
+      }
+
+      console.log('Fetching transaction statistics...')
+      
+      // Fetch monthly data for total transactions
+      const monthlyResponse = await fetch('/api/revenue?period=monthly', {
+        headers: {
+          'Authorization': `Bearer ${session.access_token}`,
+          'Content-Type': 'application/json',
+        },
+      })
+
+      // Fetch daily data for today's revenue
+      const dailyResponse = await fetch('/api/revenue?period=daily', {
+        headers: {
+          'Authorization': `Bearer ${session.access_token}`,
+          'Content-Type': 'application/json',
+        },
+      })
+
+      console.log('Transaction stats API responses:', monthlyResponse.status, dailyResponse.status)
+      
+      if (monthlyResponse.ok) {
+        const monthlyData = await monthlyResponse.json()
+        const totalTransactions = monthlyData.revenueData?.reduce((sum: number, item: any) => sum + (item.transaction_count || 0), 0) || 0
+        console.log('API total transactions:', totalTransactions)
+        
+        // Don't override direct query results
+        console.log('📊 API total transactions:', totalTransactions, '- not setting to avoid override')
+        
+        // Get the most recent transaction date
+        if (monthlyData.revenueData && monthlyData.revenueData.length > 0) {
+          const mostRecent = monthlyData.revenueData[0]
+          setLastSyncDate(mostRecent.period_start)
+        }
+      } else {
+        console.error('Failed to fetch monthly transaction stats:', monthlyResponse.status)
+        // Don't set to 0 if we already have a value from direct query
+      }
+
+      if (dailyResponse.ok) {
+        const dailyData = await dailyResponse.json()
+        // Get today's revenue (most recent day)
+        if (dailyData.revenueData && dailyData.revenueData.length > 0) {
+          const todayRevenue = dailyData.revenueData[0]?.total_revenue || 0
+          console.log('API today\'s revenue:', todayRevenue)
+          // Don't override direct query results
+          console.log('📊 API today\'s revenue:', todayRevenue, '- not setting to avoid override')
+        }
+      } else {
+        console.error('Failed to fetch daily revenue stats:', dailyResponse.status)
+        // Don't set to 0 if we already have a value from direct query
+      }
+    } catch (err) {
+      console.error('Error fetching transaction stats:', err)
+      setTotalTransactions(0)
+      setTodayRevenue(0)
+    }
+  }
+
+  const fetchDirectTransactionData = async () => {
+    try {
+      const { data: { session } } = await supabase.auth.getSession()
+      
+      if (!session) {
+        console.log('No session for direct transaction data')
+        return
+      }
+
+      console.log('Fetching direct transaction data...')
+      
+      // Get user's organization ID
+      const userResponse = await fetch('/api/users/me', {
+        headers: {
+          'Authorization': `Bearer ${session.access_token}`,
+          'Content-Type': 'application/json',
+        },
+      })
+      
+      if (!userResponse.ok) {
+        console.error('Failed to get user data for direct transactions')
+        return
+      }
+      
+      const userData = await userResponse.json()
+      const organizationId = userData.organization_id
+      
+      if (!organizationId) {
+        console.error('No organization ID found for direct transactions')
+        return
+      }
+
+      // Get today's date range
+      const today = new Date()
+      const startOfDay = new Date(today.getFullYear(), today.getMonth(), today.getDate())
+      const endOfDay = new Date(today.getFullYear(), today.getMonth(), today.getDate() + 1)
+      
+      // Fetch today's transactions directly from Supabase
+      const { data: todayTransactions, error: todayError } = await supabase
+        .from('payment_transactions')
+        .select('amount')
+        .eq('organization_id', organizationId)
+        .gte('transaction_date', startOfDay.toISOString())
+        .lt('transaction_date', endOfDay.toISOString())
+        .eq('status', 'SUCCESSFUL')
+
+      if (todayError) {
+        console.error('❌ Error fetching today\'s transactions:', todayError)
+      } else {
+        const todayRevenue = todayTransactions?.reduce((sum, t) => sum + (t.amount || 0), 0) || 0
+        console.log('✅ Direct today\'s revenue:', todayRevenue)
+        // Always set the direct revenue
+        setTodayRevenue(todayRevenue)
+        console.log('🔄 Set todayRevenue to:', todayRevenue)
+      }
+
+      // Fetch total transaction count using count() for better performance
+      console.log('🔍 Fetching total transactions for organization:', organizationId)
+      const { count: totalCount, error: allError } = await supabase
+        .from('payment_transactions')
+        .select('*', { count: 'exact', head: true })
+        .eq('organization_id', organizationId)
+        .eq('status', 'SUCCESSFUL')
+
+      if (allError) {
+        console.error('❌ Error fetching total transactions:', allError)
+        // Fallback: try to get count by selecting all IDs
+        console.log('🔄 Trying fallback method...')
+        const { data: allTransactions, error: fallbackError } = await supabase
+          .from('payment_transactions')
+          .select('id')
+          .eq('organization_id', organizationId)
+          .eq('status', 'SUCCESSFUL')
+        
+        if (fallbackError) {
+          console.error('❌ Fallback also failed:', fallbackError)
+        } else {
+          const fallbackCount = allTransactions?.length || 0
+          console.log('✅ Fallback total transactions:', fallbackCount)
+          setTotalTransactions(fallbackCount)
+        }
+      } else {
+        console.log('✅ Direct total transactions (count):', totalCount)
+        setTotalTransactions(totalCount || 0)
+        console.log('🔄 Set totalTransactions to:', totalCount || 0)
+      }
+
+    } catch (err) {
+      console.error('Error fetching direct transaction data:', err)
+    }
+  }
+
+  const fetchForecastData = async (organizationId?: string) => {
+    try {
+      const orgId = organizationId || organization?.id
+      if (!orgId) {
+        console.log('No organization ID for forecast data')
+        return
+      }
+
+      console.log('🔮 Fetching forecast data for organization:', orgId)
+      const response = await fetch(`/api/forecast?organizationId=${orgId}`)
+      if (response.ok) {
+        const data = await response.json()
+        setForecastData(data)
+        console.log('✅ Forecast data loaded:', data)
+      } else {
+        console.error('❌ Failed to fetch forecast data:', response.status)
+      }
+    } catch (error) {
+      console.error('❌ Error fetching forecast data:', error)
+    }
+  }
 
   const fetchDashboardData = async () => {
     try {
@@ -102,6 +347,20 @@ export default function DashboardPage() {
       if (orgData.user) {
         setUser(orgData.user)
       }
+
+      // Fetch team members count
+      await fetchTeamMembersCount()
+      
+      // Fetch direct transaction data first (more accurate)
+      await fetchDirectTransactionData()
+      
+      // Fetch transaction statistics as fallback
+      await fetchTransactionStats()
+      
+      // Fetch forecast data after organization is set
+      if (orgData.organization?.id) {
+        await fetchForecastData(orgData.organization.id)
+      }
     } catch (error: any) {
       console.error('Failed to fetch dashboard data:', error)
       setError(error.message)
@@ -139,6 +398,7 @@ export default function DashboardPage() {
   }
 
   // Role-based UI rendering
+
   const renderQuickStats = () => {
     const stats: Array<{
       title: string
@@ -159,15 +419,39 @@ export default function DashboardPage() {
       stats.push(
         {
           title: "Team Members",
-          value: "-",
+          value: teamMembersCount.toString(),
           icon: Users,
           link: "/dashboard/users"
         },
         {
           title: "Today's Revenue",
-          value: "-",
+          value: todayRevenue > 0 ? `€${todayRevenue.toFixed(2)}` : "€0.00",
           icon: DollarSign,
           link: "/dashboard/revenue"
+        },
+        {
+          title: "SumUp Transactions",
+          value: totalTransactions.toLocaleString(),
+          icon: CreditCard,
+          link: "/dashboard/sumup"
+        },
+        {
+          title: "Verkaufs-Analytics",
+          value: "Auswertungen",
+          icon: BarChart3,
+          link: "/dashboard/analytics"
+        },
+        {
+          title: "Umsatz-Prognose",
+          value: forecastData ? `€${forecastData.forecast?.slice(0, 7).reduce((sum: number, day: any) => sum + day.forecastedRevenue, 0).toFixed(0)}` : "Lädt...",
+          icon: TrendingUp,
+          link: "/dashboard/forecast"
+        },
+        {
+          title: "Wetter-Sync",
+          value: "Hamburg",
+          icon: Cloud,
+          link: "/dashboard/weather"
         }
       )
     }
@@ -184,7 +468,14 @@ export default function DashboardPage() {
   }
 
   const renderQuickActions = () => {
-    const actions = []
+    const actions: Array<{
+      title: string
+      description: string
+      icon: any
+      href?: string
+      onClick?: () => void
+      variant: 'default' | 'outline'
+    }> = []
 
     // Staff can only see shift-related actions
     if (user?.role === 'staff') {
@@ -241,7 +532,7 @@ export default function DashboardPage() {
           icon: CreditCard,
           href: "/dashboard/sumup",
           variant: "outline" as const
-        }
+        },
       )
     }
 
@@ -352,6 +643,32 @@ export default function DashboardPage() {
       {/* Main Content */}
       <div className="px-4 sm:px-6 lg:px-8 py-8">
 
+        {/* SumUp OAuth Message */}
+        {sumupMessage && (
+          <div className={`mb-6 p-4 rounded-xl ${
+            sumupMessage.type === 'success' 
+              ? 'bg-green-50 border border-green-200 text-green-800' 
+              : 'bg-red-50 border border-red-200 text-red-800'
+          }`}>
+            <div className="flex items-center justify-between">
+              <div className="flex items-center space-x-2">
+                {sumupMessage.type === 'success' ? (
+                  <div className="w-2 h-2 bg-green-500 rounded-full"></div>
+                ) : (
+                  <div className="w-2 h-2 bg-red-500 rounded-full"></div>
+                )}
+                <span className="text-sm font-medium">{sumupMessage.message}</span>
+              </div>
+              <button 
+                onClick={() => setSumupMessage(null)}
+                className="text-gray-400 hover:text-gray-600"
+              >
+                ×
+              </button>
+            </div>
+          </div>
+        )}
+
         {/* Quick Stats */}
         <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-4 mb-8">
           {renderQuickStats().map((stat, index) => {
@@ -367,11 +684,17 @@ export default function DashboardPage() {
                   <Link href={stat.link as any} className="text-sm text-gray-500 hover:text-gray-700 transition-colors">
                     {stat.title === "Team Members" ? "Manage users" : 
                      stat.title === "Today's Revenue" ? "View analytics" :
-                     stat.title === "Active Shifts" ? "View schedule" : "View details"}
+                     stat.title === "Active Shifts" ? "View schedule" : 
+                     stat.title === "SumUp Transactions" ? "Sync & manage" : "View details"}
                   </Link>
                 ) : (
                   <p className="text-sm text-gray-500">
                     {organization?.slug || 'Restaurant management platform'}
+                  </p>
+                )}
+                {stat.title === "SumUp Transactions" && lastSyncDate && (
+                  <p className="text-xs text-gray-400 mt-1">
+                    Last sync: {new Date(lastSyncDate).toLocaleDateString('de-DE')}
                   </p>
                 )}
               </div>
@@ -389,19 +712,31 @@ export default function DashboardPage() {
             <div className="grid gap-3 md:grid-cols-2 lg:grid-cols-4">
               {renderQuickActions().map((action, index) => {
                 const IconComponent = action.icon
-                return (
-                  <Link key={index} href={action.href as any}>
-                    <div className="p-4 border border-gray-200 rounded-xl hover:bg-gray-50 transition-colors cursor-pointer">
-                      <div className="flex items-center space-x-3">
-                        <IconComponent className="h-5 w-5 text-gray-600" />
-                        <div>
-                          <h3 className="text-sm font-medium text-gray-900">{action.title}</h3>
-                          <p className="text-xs text-gray-500">{action.description}</p>
-                        </div>
+                const content = (
+                  <div className="p-4 border border-gray-200 rounded-xl hover:bg-gray-50 transition-colors cursor-pointer">
+                    <div className="flex items-center space-x-3">
+                      <IconComponent className="h-5 w-5 text-gray-600" />
+                      <div>
+                        <h3 className="text-sm font-medium text-gray-900">{action.title}</h3>
+                        <p className="text-xs text-gray-500">{action.description}</p>
                       </div>
                     </div>
-                  </Link>
+                  </div>
                 )
+                
+                if (action.onClick) {
+                  return (
+                    <div key={index} onClick={action.onClick}>
+                      {content}
+                    </div>
+                  )
+                } else {
+                  return (
+                    <Link key={index} href={action.href as any}>
+                      {content}
+                    </Link>
+                  )
+                }
               })}
             </div>
           </div>

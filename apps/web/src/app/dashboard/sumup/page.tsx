@@ -36,6 +36,8 @@ interface MerchantCode {
   integration_type: 'oauth' | 'api_key'
   oauth_client_id?: string
   oauth_token_expires_at?: string
+  oauth_access_token_encrypted?: string
+  oauth_refresh_token_encrypted?: string
 }
 
 interface CreateMerchantCodeData {
@@ -52,7 +54,14 @@ interface CreateMerchantCodeData {
 
 interface SyncResult {
   success: boolean
-  transactionsProcessed: number
+  totalTransactionsProcessed: number
+  newTransactionsAdded: number
+  merchantResults: Array<{
+    merchant_code: string
+    total: number
+    new: number
+    error: string | null
+  }>
   message: string
 }
 
@@ -76,6 +85,15 @@ export default function SumUpPage() {
   })
   const [generatedSalt, setGeneratedSalt] = useState<string>('')
   const [saltCopied, setSaltCopied] = useState(false)
+  
+  // New state for date-based transaction fetching
+  const [selectedDate, setSelectedDate] = useState('2025-09-27')
+  const [isFetchingByDate, setIsFetchingByDate] = useState(false)
+  const [dateTransactions, setDateTransactions] = useState<any[]>([])
+  const [dateError, setDateError] = useState<string | null>(null)
+  const [editingMerchant, setEditingMerchant] = useState<MerchantCode | null>(null)
+  const [autoRefreshEnabled, setAutoRefreshEnabled] = useState(true)
+  const [refreshingTokens, setRefreshingTokens] = useState<Set<string>>(new Set())
   const supabase = createClient(
     process.env.NEXT_PUBLIC_SUPABASE_URL!,
     process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
@@ -92,6 +110,34 @@ export default function SumUpPage() {
     
     checkAuthAndFetchData()
   }, [])
+
+  // Auto-refresh tokens every 30 minutes
+  useEffect(() => {
+    if (!autoRefreshEnabled) return
+
+    const interval = setInterval(async () => {
+      const tokensToRefresh = merchantCodes.filter(merchant => {
+        if (merchant.integration_type !== 'oauth') return false
+        if (!merchant.oauth_token_expires_at) return false
+        
+        const expiresAt = new Date(merchant.oauth_token_expires_at)
+        const now = new Date()
+        const timeUntilExpiry = expiresAt.getTime() - now.getTime()
+        
+        // Refresh if expires in less than 1 hour
+        return timeUntilExpiry < 60 * 60 * 1000 && timeUntilExpiry > 0
+      })
+
+      for (const merchant of tokensToRefresh) {
+        if (!refreshingTokens.has(merchant.merchant_code)) {
+          console.log(`🔄 Auto-refreshing token for ${merchant.merchant_code}`)
+          await refreshOAuthToken(merchant.merchant_code)
+        }
+      }
+    }, 30 * 60 * 1000) // 30 minutes
+
+    return () => clearInterval(interval)
+  }, [autoRefreshEnabled, merchantCodes, refreshingTokens])
 
   const checkAuthAndFetchData = async () => {
     try {
@@ -187,6 +233,11 @@ export default function SumUpPage() {
       return
     }
 
+    if (!merchantCodes || merchantCodes.length === 0) {
+      setError('No merchant codes found. Please add a merchant code first.')
+      return
+    }
+
     setIsSyncing(true)
     setError(null)
     setSuccess(null)
@@ -199,6 +250,42 @@ export default function SumUpPage() {
         throw new Error('No active session')
       }
 
+      // Get organization ID from the first merchant code
+      console.log('🔍 Merchant codes data:', JSON.stringify(merchantCodes, null, 2))
+      console.log('🔍 First merchant code:', JSON.stringify(merchantCodes[0], null, 2))
+      console.log('🔍 Available keys in first merchant code:', Object.keys(merchantCodes[0] || {}))
+      
+      let organizationId = merchantCodes[0]?.organization_id
+      
+      // Fallback: Get organization ID from user data if not in merchant codes
+      if (!organizationId) {
+        console.log('⚠️ No organization ID in merchant codes, fetching from user data...')
+        try {
+          const userResponse = await fetch('/api/users/me', {
+            headers: {
+              'Authorization': `Bearer ${session.access_token}`,
+              'Content-Type': 'application/json',
+            },
+          })
+          
+          if (userResponse.ok) {
+            const userData = await userResponse.json()
+            organizationId = userData.organization_id
+            console.log('✅ Got organization ID from user data:', organizationId)
+          }
+        } catch (error) {
+          console.error('❌ Failed to get organization ID from user data:', error)
+        }
+      }
+      
+      if (!organizationId) {
+        console.error('❌ No organization ID found in merchant codes or user data')
+        console.error('❌ Full merchant codes data:', JSON.stringify(merchantCodes, null, 2))
+        throw new Error('No organization ID found in merchant codes or user data')
+      }
+
+      console.log('🔄 Syncing with organizationId:', organizationId, 'fromDate:', fromDate, 'toDate:', toDate)
+
       const response = await fetch('/api/sumup/sync', {
         method: 'POST',
         headers: {
@@ -206,7 +293,7 @@ export default function SumUpPage() {
           'Content-Type': 'application/json',
         },
         body: JSON.stringify({
-          organizationId: merchantCodes[0]?.organization_id, // Assuming single org for now
+          organizationId,
           fromDate,
           toDate
         }),
@@ -233,7 +320,7 @@ export default function SumUpPage() {
       }
       
       setSyncResult(data)
-      setSuccess(`Successfully synced ${data.transactionsProcessed} transactions`)
+      setSuccess(`Successfully synced ${data.totalTransactionsProcessed} transactions, added ${data.newTransactionsAdded} new ones`)
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to sync transactions')
     } finally {
@@ -265,6 +352,57 @@ export default function SumUpPage() {
       setTimeout(() => setSaltCopied(false), 2000)
     } catch (err) {
       setError('Failed to copy salt to clipboard')
+    }
+  }
+
+
+  const handleGetTransactionsByDate = async (merchantCode: string) => {
+    setIsFetchingByDate(true)
+    setDateError(null)
+    setDateTransactions([])
+
+    try {
+      const { data: { session } } = await supabase.auth.getSession()
+      
+      if (!session) {
+        throw new Error('No active session')
+      }
+
+      const response = await fetch('/api/sumup/get-transactions-by-date', {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${session.access_token}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ 
+          merchantCode, 
+          date: selectedDate 
+        }),
+      })
+      
+      if (!response.ok) {
+        if (response.status === 401) {
+          router.push('/login')
+          return
+        }
+        const errorData = await response.json()
+        throw new Error(errorData.error || `HTTP ${response.status}: ${response.statusText}`)
+      }
+      
+      const data = await response.json()
+      
+      if (data.success) {
+        setDateTransactions(data.transactions)
+        setSuccess(`✅ Successfully fetched ${data.count} transactions for ${selectedDate}!`)
+      } else {
+        setDateError(data.message || 'Failed to fetch transactions')
+        setError(data.message || 'Failed to fetch transactions')
+      }
+    } catch (err) {
+      setDateError(err instanceof Error ? err.message : 'Failed to fetch transactions by date')
+      setError(err instanceof Error ? err.message : 'Failed to fetch transactions by date')
+    } finally {
+      setIsFetchingByDate(false)
     }
   }
 
@@ -348,6 +486,158 @@ export default function SumUpPage() {
     }
   }
 
+  const handleSumUpAuth = async (merchantCode: MerchantCode) => {
+    try {
+      // Get current session for authorization
+      const { data: { session } } = await supabase.auth.getSession()
+      if (!session) {
+        setError('Bitte melde dich zuerst an!')
+        return
+      }
+      
+      if (!merchantCode.oauth_client_id) {
+        setError('Keine OAuth Client ID für diesen Merchant Code konfiguriert!')
+        return
+      }
+      
+      const clientId = merchantCode.oauth_client_id
+      const redirectUri = `${window.location.origin}/api/auth/sumup/callback`
+      const stateData = {
+        organization_id: merchantCode.organization_id || 'default',
+        merchant_code: merchantCode.merchant_code,
+        timestamp: Date.now()
+      }
+      const state = Buffer.from(JSON.stringify(stateData)).toString('base64')
+      
+      // Use correct SumUp OAuth endpoint without scope (let SumUp determine default scopes)
+      const authUrl = `https://api.sumup.com/authorize?` +
+        `response_type=code&` +
+        `client_id=${clientId}&` +
+        `redirect_uri=${encodeURIComponent(redirectUri)}&` +
+        `state=${encodeURIComponent(state)}`
+      
+      console.log('SumUp OAuth URL:', authUrl)
+      console.log('Client ID:', clientId)
+      console.log('Redirect URI:', redirectUri)
+      console.log('State:', state)
+      console.log('Merchant Code:', merchantCode.merchant_code)
+      
+      // Open in new tab
+      window.open(authUrl, '_blank')
+      
+    } catch (error) {
+      console.error('Error starting OAuth flow:', error)
+      setError(`Fehler beim Starten der OAuth-Verbindung: ${error instanceof Error ? error.message : 'Unknown error'}`)
+    }
+  }
+
+  const refreshOAuthToken = async (merchantCode: string) => {
+    try {
+      setRefreshingTokens(prev => new Set(prev).add(merchantCode))
+      
+      const { data: { session } } = await supabase.auth.getSession()
+      if (!session) {
+        setError('Bitte melde dich zuerst an!')
+        return
+      }
+
+      const response = await fetch('/api/sumup/refresh-token', {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${session.access_token}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ merchantCode }),
+      })
+
+      const data = await response.json()
+
+      if (!response.ok) {
+        const errorMessage = data?.error?.message || data?.message || `HTTP ${response.status}: ${response.statusText}`
+        console.error('❌ API Error Details:')
+        console.error('Status:', response.status)
+        console.error('Status Text:', response.statusText)
+        console.error('Data:', data)
+        console.error('Error Message:', errorMessage)
+        console.error('Full Response:', JSON.stringify(data, null, 2))
+        throw new Error(errorMessage)
+      }
+
+      setSuccess(`Token für ${merchantCode} erfolgreich erneuert!`)
+      await fetchMerchantCodes()
+      
+    } catch (error) {
+      console.error('Token refresh error:', error)
+      setError(`Fehler beim Erneuern des Tokens: ${error instanceof Error ? error.message : 'Unknown error'}`)
+    } finally {
+      setRefreshingTokens(prev => {
+        const newSet = new Set(prev)
+        newSet.delete(merchantCode)
+        return newSet
+      })
+    }
+  }
+
+  const getOAuthStatus = (merchantCode: MerchantCode) => {
+    // Debug log to see what data we're getting
+    console.log('🔍 OAuth Status Debug for', merchantCode.merchant_code, {
+      integration_type: merchantCode.integration_type,
+      oauth_client_id: merchantCode.oauth_client_id,
+      oauth_access_token_encrypted: merchantCode.oauth_access_token_encrypted ? 'EXISTS' : 'NULL',
+      oauth_refresh_token_encrypted: merchantCode.oauth_refresh_token_encrypted ? 'EXISTS' : 'NULL',
+      oauth_token_expires_at: merchantCode.oauth_token_expires_at
+    })
+    
+    if (merchantCode.integration_type !== 'oauth') {
+      return { status: 'not_oauth', message: 'Kein OAuth' }
+    }
+    
+    if (!merchantCode.oauth_client_id) {
+      return { status: 'not_configured', message: 'Nicht konfiguriert' }
+    }
+    
+    // Check if we have any OAuth tokens (access or refresh)
+    const hasAccessToken = merchantCode.oauth_access_token_encrypted && merchantCode.oauth_access_token_encrypted.trim() !== ''
+    const hasRefreshToken = merchantCode.oauth_refresh_token_encrypted && merchantCode.oauth_refresh_token_encrypted.trim() !== ''
+    
+    if (!hasAccessToken && !hasRefreshToken) {
+      return { status: 'not_connected', message: 'Nicht verbunden' }
+    }
+    
+    // If we have tokens, check expiration
+    if (merchantCode.oauth_token_expires_at) {
+      const expiresAt = new Date(merchantCode.oauth_token_expires_at)
+      const now = new Date()
+      const timeUntilExpiry = expiresAt.getTime() - now.getTime()
+      
+      if (timeUntilExpiry <= 0) {
+        // If expired but we have refresh token, it's still connected (can be refreshed)
+        if (hasRefreshToken) {
+          return { status: 'expired_but_refreshable', message: 'Token abgelaufen (erneuerbar)' }
+        } else {
+          return { status: 'expired', message: 'Token abgelaufen' }
+        }
+      } else if (timeUntilExpiry < 24 * 60 * 60 * 1000) { // Less than 24 hours
+        return { status: 'expiring_soon', message: 'Läuft bald ab' }
+      }
+    }
+    
+    return { status: 'connected', message: 'Verbunden' }
+  }
+
+  const getStatusColor = (status: string) => {
+    switch (status) {
+      case 'connected': return 'text-green-600 bg-green-100'
+      case 'expiring_soon': return 'text-yellow-600 bg-yellow-100'
+      case 'expired': return 'text-red-600 bg-red-100'
+      case 'expired_but_refreshable': return 'text-orange-600 bg-orange-100'
+      case 'not_connected': return 'text-gray-600 bg-gray-100'
+      case 'not_configured': return 'text-orange-600 bg-orange-100'
+      case 'not_oauth': return 'text-blue-600 bg-blue-100'
+      default: return 'text-gray-600 bg-gray-100'
+    }
+  }
+
   if (isLoading) {
     return (
       <div className="min-h-screen bg-gray-50 flex items-center justify-center">
@@ -428,6 +718,23 @@ export default function SumUpPage() {
                   <RefreshCw className="h-4 w-4" />
                   <span>Refresh</span>
                 </button>
+                
+                {/* Auto-Refresh Toggle */}
+                <div className="flex items-center space-x-2 bg-gray-100 px-3 py-2 rounded-xl">
+                  <span className="text-sm text-gray-700">Auto-Refresh:</span>
+                  <button
+                    onClick={() => setAutoRefreshEnabled(!autoRefreshEnabled)}
+                    className={`relative inline-flex h-5 w-9 items-center rounded-full transition-colors ${
+                      autoRefreshEnabled ? 'bg-blue-600' : 'bg-gray-300'
+                    }`}
+                  >
+                    <span
+                      className={`inline-block h-3 w-3 transform rounded-full bg-white transition-transform ${
+                        autoRefreshEnabled ? 'translate-x-5' : 'translate-x-1'
+                      }`}
+                    />
+                  </button>
+                </div>
                 
                 <Link href="/dashboard/settings">
                   <button className="bg-gray-900 text-white p-2 rounded-xl hover:bg-gray-800 transition-colors">
@@ -741,6 +1048,11 @@ export default function SumUpPage() {
                           }`}>
                             {merchant.sync_status}
                           </span>
+                          {merchant.integration_type === 'oauth' && (
+                            <span className={`inline-flex items-center px-2 py-1 rounded-full text-xs font-medium ${getStatusColor(getOAuthStatus(merchant).status)}`}>
+                              {getOAuthStatus(merchant).message}
+                            </span>
+                          )}
                         </div>
                         <p className="text-sm text-gray-500 mt-1">{merchant.description}</p>
                         <div className="flex items-center space-x-2 mt-1">
@@ -756,9 +1068,66 @@ export default function SumUpPage() {
                         </div>
                       </div>
                     </div>
-                    <button className="p-2 text-gray-400 hover:text-gray-600 transition-colors">
-                      <Settings className="h-4 w-4" />
-                    </button>
+                    <div className="flex items-center space-x-2">
+                      {/* OAuth Connect Button for OAuth merchants */}
+                      {merchant.integration_type === 'oauth' && (
+                        <>
+                          <button 
+                            onClick={() => handleSumUpAuth(merchant)}
+                            className="bg-blue-600 text-white px-3 py-1 rounded-lg text-xs font-medium hover:bg-blue-700 transition-colors flex items-center space-x-1"
+                          >
+                            <Key className="h-3 w-3" />
+                            <span>Connect to SumUp</span>
+                          </button>
+                          
+                          {/* Manual Token Refresh Button */}
+                          {(getOAuthStatus(merchant).status === 'expired_but_refreshable' || 
+                            getOAuthStatus(merchant).status === 'expiring_soon' ||
+                            getOAuthStatus(merchant).status === 'connected') && (
+                            <button 
+                              onClick={() => refreshOAuthToken(merchant.merchant_code)}
+                              disabled={refreshingTokens.has(merchant.merchant_code)}
+                              className="bg-orange-600 text-white px-3 py-1 rounded-lg text-xs font-medium hover:bg-orange-700 transition-colors flex items-center space-x-1 disabled:opacity-50"
+                            >
+                              {refreshingTokens.has(merchant.merchant_code) ? (
+                                <Loader2 className="h-3 w-3 animate-spin" />
+                              ) : (
+                                <RefreshCw className="h-3 w-3" />
+                              )}
+                              <span>Refresh Token</span>
+                            </button>
+                          )}
+                        </>
+                      )}
+                      
+                      {/* Date-based transaction fetching */}
+                      <div className="flex items-center space-x-2">
+                        <input
+                          type="date"
+                          value={selectedDate}
+                          onChange={(e) => setSelectedDate(e.target.value)}
+                          className="text-xs border border-gray-300 rounded px-2 py-1"
+                        />
+                        <button 
+                          onClick={() => handleGetTransactionsByDate(merchant.merchant_code)}
+                          disabled={isFetchingByDate}
+                          className="bg-green-600 text-white px-3 py-1 rounded-lg text-xs font-medium hover:bg-green-700 transition-colors flex items-center space-x-1 disabled:opacity-50"
+                        >
+                          {isFetchingByDate ? (
+                            <Loader2 className="h-3 w-3 animate-spin" />
+                          ) : (
+                            <span>📅 Get Transactions</span>
+                          )}
+                        </button>
+                      </div>
+                      
+                      <button 
+                        onClick={() => setEditingMerchant(merchant)}
+                        className="p-2 text-gray-400 hover:text-gray-600 transition-colors"
+                      >
+                        <Settings className="h-4 w-4" />
+                      </button>
+                    </div>
                   </div>
                 </div>
               ))
@@ -831,6 +1200,75 @@ export default function SumUpPage() {
           </div>
         </div>
 
+        {/* Date-based Transaction Results */}
+        {(dateTransactions.length > 0 || dateError) && (
+          <div className="bg-white rounded-2xl flat-shadow-lg overflow-hidden mb-8">
+            <div className="px-6 py-4 border-b border-gray-200">
+              <h2 className="text-lg font-semibold text-gray-900">Transactions for {selectedDate}</h2>
+              <p className="text-sm text-gray-600">Transactions fetched from SumUp API</p>
+            </div>
+            <div className="p-6">
+              {dateError ? (
+                <div className="bg-red-50 border border-red-200 rounded-xl p-4">
+                  <div className="flex items-center space-x-2">
+                    <AlertCircle className="h-4 w-4 text-red-600" />
+                    <p className="text-red-800 text-sm font-medium">{dateError}</p>
+                  </div>
+                </div>
+              ) : dateTransactions.length > 0 ? (
+                <div className="space-y-4">
+                  <div className="bg-green-50 border border-green-200 rounded-xl p-4">
+                    <div className="flex items-center space-x-2 mb-3">
+                      <CheckCircle className="h-4 w-4 text-green-600" />
+                      <p className="text-green-800 text-sm font-medium">
+                        ✅ Successfully fetched {dateTransactions.length} transactions for {selectedDate}!
+                      </p>
+                    </div>
+                  </div>
+                  
+                  <div className="space-y-3">
+                    {dateTransactions.map((transaction, index) => (
+                      <div key={transaction.id || index} className="bg-gray-50 rounded-xl p-4">
+                        <h4 className="font-medium text-gray-900 mb-3">Transaction #{index + 1}</h4>
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4 text-sm">
+                          <div>
+                            <span className="font-medium text-gray-700">ID:</span>
+                            <span className="ml-2 text-gray-900">{transaction.id || transaction.transaction_id || 'N/A'}</span>
+                          </div>
+                          <div>
+                            <span className="font-medium text-gray-700">Amount:</span>
+                            <span className="ml-2 text-gray-900">
+                              {transaction.amount || transaction.total_amount || 'N/A'} {transaction.currency || 'EUR'}
+                            </span>
+                          </div>
+                          <div>
+                            <span className="font-medium text-gray-700">Status:</span>
+                            <span className="ml-2 text-gray-900">{transaction.status || 'N/A'}</span>
+                          </div>
+                          <div>
+                            <span className="font-medium text-gray-700">Payment Type:</span>
+                            <span className="ml-2 text-gray-900">{transaction.payment_type || 'N/A'}</span>
+                          </div>
+                          <div className="md:col-span-2">
+                            <span className="font-medium text-gray-700">Timestamp:</span>
+                            <span className="ml-2 text-gray-900">
+                              {transaction.timestamp || transaction.created_at || transaction.date ? 
+                                new Date(transaction.timestamp || transaction.created_at || transaction.date).toLocaleString('de-DE') : 
+                                'N/A'
+                              }
+                            </span>
+                          </div>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              ) : null}
+            </div>
+          </div>
+        )}
+
+
         {/* Webhook Configuration */}
         <div className="bg-white rounded-2xl flat-shadow-lg overflow-hidden">
           <div className="px-6 py-4 border-b border-gray-200">
@@ -853,6 +1291,110 @@ export default function SumUpPage() {
           </div>
         </div>
       </div>
+
+      {/* Edit Merchant Modal */}
+      {editingMerchant && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+          <div className="bg-white rounded-2xl p-6 w-full max-w-md mx-4">
+            <div className="flex items-center justify-between mb-4">
+              <h3 className="text-lg font-semibold text-gray-900">Merchant Account bearbeiten</h3>
+              <button
+                onClick={() => setEditingMerchant(null)}
+                className="text-gray-400 hover:text-gray-600"
+              >
+                ✕
+              </button>
+            </div>
+            
+            <div className="space-y-4">
+              <div>
+                <Label htmlFor="edit-merchant-code">Merchant Code</Label>
+                <Input
+                  id="edit-merchant-code"
+                  value={editingMerchant?.merchant_code || ''}
+                  disabled
+                  className="bg-gray-50"
+                />
+              </div>
+              
+              <div>
+                <Label htmlFor="edit-description">Beschreibung</Label>
+                <Input
+                  id="edit-description"
+                  value={editingMerchant?.description || ''}
+                  disabled
+                  className="bg-gray-50"
+                />
+              </div>
+              
+              <div>
+                <Label>Integration Type</Label>
+                <div className="text-sm text-gray-600 mt-1">
+                  {editingMerchant?.integration_type === 'oauth' ? 'OAuth' : 'API Key'}
+                </div>
+              </div>
+              
+              {editingMerchant?.integration_type === 'oauth' && (
+                <div className="space-y-3">
+                  <div className="flex items-center justify-between">
+                    <span className="text-sm font-medium text-gray-700">OAuth Status:</span>
+                    <span className={`inline-flex items-center px-2 py-1 rounded-full text-xs font-medium ${editingMerchant ? getStatusColor(getOAuthStatus(editingMerchant).status) : ''}`}>
+                      {editingMerchant ? getOAuthStatus(editingMerchant).message : ''}
+                    </span>
+                  </div>
+                  
+                  <div className="space-y-2">
+                    <button 
+                      onClick={() => {
+                        if (editingMerchant) {
+                          handleSumUpAuth(editingMerchant)
+                          setEditingMerchant(null)
+                        }
+                      }}
+                      className="w-full bg-blue-600 text-white px-4 py-2 rounded-xl hover:bg-blue-700 transition-colors flex items-center justify-center space-x-2"
+                    >
+                      <Key className="h-4 w-4" />
+                      <span>Connect to SumUp</span>
+                    </button>
+                    
+                    {/* Manual Token Refresh Button in Modal */}
+                    {editingMerchant && (getOAuthStatus(editingMerchant).status === 'expired_but_refreshable' || 
+                      getOAuthStatus(editingMerchant).status === 'expiring_soon' ||
+                      getOAuthStatus(editingMerchant).status === 'connected') && (
+                      <button 
+                        onClick={() => {
+                          if (editingMerchant) {
+                            refreshOAuthToken(editingMerchant.merchant_code)
+                          }
+                        }}
+                        disabled={editingMerchant ? refreshingTokens.has(editingMerchant.merchant_code) : false}
+                        className="w-full bg-orange-600 text-white px-4 py-2 rounded-xl hover:bg-orange-700 transition-colors flex items-center justify-center space-x-2 disabled:opacity-50"
+                      >
+                        {editingMerchant && refreshingTokens.has(editingMerchant.merchant_code) ? (
+                          <Loader2 className="h-4 w-4 animate-spin" />
+                        ) : (
+                          <RefreshCw className="h-4 w-4" />
+                        )}
+                        <span>Refresh Token</span>
+                      </button>
+                    )}
+                  </div>
+                </div>
+              )}
+              
+              <div className="flex space-x-3 pt-4">
+                <Button
+                  onClick={() => setEditingMerchant(null)}
+                  variant="outline"
+                  className="flex-1"
+                >
+                  Schließen
+                </Button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   )
 }

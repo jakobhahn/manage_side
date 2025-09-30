@@ -79,6 +79,7 @@ export async function GET(request: NextRequest) {
       .from('merchant_codes')
       .select(`
         id,
+        organization_id,
         merchant_code,
         merchant_name,
         is_active,
@@ -88,7 +89,9 @@ export async function GET(request: NextRequest) {
         webhook_url,
         integration_type,
         oauth_client_id,
-        oauth_token_expires_at
+        oauth_token_expires_at,
+        oauth_access_token_encrypted,
+        oauth_refresh_token_encrypted
       `)
       .eq('organization_id', userData.organization_id)
       .order('created_at', { ascending: false })
@@ -101,6 +104,7 @@ export async function GET(request: NextRequest) {
       )
     }
 
+    console.log('🔍 Merchant codes API response:', JSON.stringify(merchantCodes, null, 2))
     return NextResponse.json(merchantCodes || [])
   } catch (error) {
     console.error('Merchant codes fetch error:', error)
