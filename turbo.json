@@ -4,21 +4,56 @@
   "tasks": {
     "build": {
       "dependsOn": ["^build"],
-      "outputs": [".next/**", "!.next/cache/**", "dist/**"]
+      "outputs": [".next/**", "!.next/cache/**", "dist/**"],
+      "env": [
+        "NEXT_PUBLIC_SUPABASE_URL",
+        "SUPABASE_SERVICE_ROLE_KEY",
+        "ENCRYPTION_KEY",
+        "SUMUP_CLIENT_ID",
+        "SUMUP_CLIENT_SECRET"
+      ]
     },
     "dev": {
       "cache": false,
-      "persistent": true
+      "persistent": true,
+      "env": [
+        "NEXT_PUBLIC_SUPABASE_URL",
+        "SUPABASE_SERVICE_ROLE_KEY",
+        "ENCRYPTION_KEY",
+        "SUMUP_CLIENT_ID",
+        "SUMUP_CLIENT_SECRET"
+      ]
     },
     "lint": {
-      "dependsOn": ["^lint"]
+      "dependsOn": ["^lint"],
+      "env": [
+        "NEXT_PUBLIC_SUPABASE_URL",
+        "SUPABASE_SERVICE_ROLE_KEY",
+        "ENCRYPTION_KEY",
+        "SUMUP_CLIENT_ID",
+        "SUMUP_CLIENT_SECRET"
+      ]
     },
     "type-check": {
-      "dependsOn": ["^type-check"]
+      "dependsOn": ["^type-check"],
+      "env": [
+        "NEXT_PUBLIC_SUPABASE_URL",
+        "SUPABASE_SERVICE_ROLE_KEY",
+        "ENCRYPTION_KEY",
+        "SUMUP_CLIENT_ID",
+        "SUMUP_CLIENT_SECRET"
+      ]
     },
     "test": {
       "dependsOn": ["^build"],
-      "outputs": ["coverage/**"]
+      "outputs": ["coverage/**"],
+      "env": [
+        "NEXT_PUBLIC_SUPABASE_URL",
+        "SUPABASE_SERVICE_ROLE_KEY",
+        "ENCRYPTION_KEY",
+        "SUMUP_CLIENT_ID",
+        "SUMUP_CLIENT_SECRET"
+      ]
     },
     "clean": {
       "cache": false
