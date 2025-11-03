@@ -11,7 +11,6 @@ import {
   Wind,
   Thermometer,
   Droplets,
-  Eye,
   Clock,
   MapPin
 } from 'lucide-react'
@@ -52,8 +51,9 @@ export default function WeatherPage() {
       }
       
       const data = await response.json()
-      setWeatherData(data.weatherData || [])
-      setLastSync(data.lastSync || new Date().toISOString())
+      console.log('Weather data response:', data)
+      setWeatherData(data.data || [])
+      setLastSync(new Date().toISOString())
     } catch (err) {
       console.error('Error fetching weather data:', err)
       setError(err instanceof Error ? err.message : 'Unknown error')
@@ -76,8 +76,10 @@ export default function WeatherPage() {
       }
       
       const data = await response.json()
-      setWeatherData(data.weatherData || [])
-      setLastSync(data.lastSync || new Date().toISOString())
+      console.log('Weather sync response:', data)
+      
+      // After sync, fetch the updated data
+      await fetchWeatherData()
     } catch (err) {
       console.error('Error syncing weather data:', err)
       setError(err instanceof Error ? err.message : 'Unknown error')
@@ -207,6 +209,12 @@ export default function WeatherPage() {
             </CardDescription>
           </CardHeader>
           <CardContent>
+            {error && (
+              <div className="mb-4 p-3 bg-red-50 border border-red-200 rounded-lg">
+                <p className="text-red-800 text-sm">Fehler: {error}</p>
+              </div>
+            )}
+            
             {weatherData.length === 0 ? (
               <div className="text-center py-8">
                 <Cloud className="h-12 w-12 mx-auto text-gray-400 mb-4" />
@@ -214,51 +222,122 @@ export default function WeatherPage() {
                 <p className="text-sm text-gray-500 mt-2">
                   Klicken Sie auf "Jetzt synchronisieren", um Wetterdaten zu laden.
                 </p>
+                {isLoading && (
+                  <p className="text-sm text-blue-600 mt-2">Lade Daten...</p>
+                )}
               </div>
             ) : (
-              <div className="space-y-4">
-                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-                  {weatherData.slice(0, 6).map((item, index) => (
-                    <div key={index} className="border rounded-lg p-4">
-                      <div className="flex items-center justify-between mb-2">
-                        <div className="flex items-center">
-                          {getWeatherIcon(item.weather_code)}
-                          <span className="ml-2 text-sm font-medium">
-                            {new Date(item.date).toLocaleDateString('de-DE')} {item.hour}:00
-                          </span>
+              <div className="space-y-6">
+                <p className="text-sm text-gray-600">
+                  {weatherData.length} Wetterdatenpunkte verfügbar
+                </p>
+                
+                {/* Today's Weather */}
+                {(() => {
+                  const today = new Date().toISOString().split('T')[0]
+                  const todayData = weatherData.filter(item => item.date === today)
+                  
+                  if (todayData.length > 0) {
+                    return (
+                      <div className="mb-6">
+                        <h4 className="text-lg font-semibold text-gray-900 mb-3 flex items-center">
+                          <Sun className="h-5 w-5 text-yellow-500 mr-2" />
+                          Heute ({new Date().toLocaleDateString('de-DE')})
+                        </h4>
+                        <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-6 gap-3">
+                          {todayData.filter((_, index) => index % 3 === 0).slice(0, 8).map((item, index) => (
+                            <div key={index} className="bg-blue-50 border border-blue-200 rounded-lg p-3 text-center">
+                              <div className="text-xs text-gray-600 mb-1">{item.hour}:00</div>
+                              <div className="flex justify-center mb-2">
+                                {getWeatherIcon(item.weather_code)}
+                              </div>
+                              <div className="text-sm font-semibold">{item.temperature.toFixed(1)}°C</div>
+                              <div className="text-xs text-gray-500">{item.precipitation.toFixed(1)}mm</div>
+                            </div>
+                          ))}
                         </div>
                       </div>
-                      
-                      <div className="space-y-1">
-                        <div className="flex items-center text-sm">
-                          <Thermometer className="h-4 w-4 text-red-500 mr-2" />
-                          <span>{item.temperature.toFixed(1)}°C</span>
-                        </div>
-                        
-                        <div className="flex items-center text-sm">
-                          <Droplets className="h-4 w-4 text-blue-500 mr-2" />
-                          <span>{item.precipitation.toFixed(1)}mm</span>
-                        </div>
-                        
-                        <div className="flex items-center text-sm">
-                          <Wind className="h-4 w-4 text-gray-500 mr-2" />
-                          <span>{item.wind_speed.toFixed(1)} km/h</span>
-                        </div>
-                        
-                        <div className="flex items-center text-sm">
-                          <Eye className="h-4 w-4 text-gray-500 mr-2" />
-                          <span>{item.humidity.toFixed(0)}%</span>
-                        </div>
+                    )
+                  }
+                  return null
+                })()}
+
+                {/* Weekly Overview */}
+                {(() => {
+                  const dailyData = weatherData.reduce((acc, item) => {
+                    if (!acc[item.date]) {
+                      acc[item.date] = []
+                    }
+                    acc[item.date].push(item)
+                    return acc
+                  }, {} as Record<string, WeatherData[]>)
+
+                  const sortedDates = Object.keys(dailyData).sort()
+                  const next14Days = sortedDates.slice(0, 14)
+
+                  return (
+                    <div>
+                      <h4 className="text-lg font-semibold text-gray-900 mb-3 flex items-center">
+                        <Cloud className="h-5 w-5 text-gray-500 mr-2" />
+                        14-Tage Übersicht
+                      </h4>
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                        {next14Days.map((date) => {
+                          const dayData = dailyData[date]
+                          const maxTemp = Math.max(...dayData.map(item => item.temperature))
+                          const minTemp = Math.min(...dayData.map(item => item.temperature))
+                          const totalPrecipitation = dayData.reduce((sum, item) => sum + item.precipitation, 0)
+                          const avgWeatherCode = Math.round(dayData.reduce((sum, item) => sum + item.weather_code, 0) / dayData.length)
+                          
+                          const dateObj = new Date(date)
+                          const isToday = date === new Date().toISOString().split('T')[0]
+                          const isTomorrow = date === new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString().split('T')[0]
+                          
+                          let dayLabel = dateObj.toLocaleDateString('de-DE', { weekday: 'short', day: 'numeric', month: 'short' })
+                          if (isToday) dayLabel = 'Heute'
+                          else if (isTomorrow) dayLabel = 'Morgen'
+
+                          return (
+                            <div key={date} className={`border rounded-lg p-4 ${isToday ? 'bg-yellow-50 border-yellow-200' : 'bg-white'}`}>
+                              <div className="flex items-center justify-between mb-3">
+                                <div>
+                                  <div className="font-medium text-gray-900">{dayLabel}</div>
+                                  <div className="text-xs text-gray-500">{dateObj.toLocaleDateString('de-DE')}</div>
+                                </div>
+                                <div className="flex items-center">
+                                  {getWeatherIcon(avgWeatherCode)}
+                                </div>
+                              </div>
+                              
+                              <div className="grid grid-cols-2 gap-4 text-sm">
+                                <div>
+                                  <div className="flex items-center text-red-600">
+                                    <Thermometer className="h-3 w-3 mr-1" />
+                                    <span className="font-medium">{maxTemp.toFixed(1)}°</span>
+                                  </div>
+                                  <div className="flex items-center text-blue-600 mt-1">
+                                    <Thermometer className="h-3 w-3 mr-1" />
+                                    <span>{minTemp.toFixed(1)}°</span>
+                                  </div>
+                                </div>
+                                <div>
+                                  <div className="flex items-center text-blue-500">
+                                    <Droplets className="h-3 w-3 mr-1" />
+                                    <span>{totalPrecipitation.toFixed(1)}mm</span>
+                                  </div>
+                                  <div className="flex items-center text-gray-500 mt-1">
+                                    <Wind className="h-3 w-3 mr-1" />
+                                    <span>{(dayData.reduce((sum, item) => sum + item.wind_speed, 0) / dayData.length).toFixed(1)} km/h</span>
+                                  </div>
+                                </div>
+                              </div>
+                            </div>
+                          )
+                        })}
                       </div>
                     </div>
-                  ))}
-                </div>
-                
-                {weatherData.length > 6 && (
-                  <div className="text-center text-sm text-gray-500">
-                    ... und {weatherData.length - 6} weitere Einträge
-                  </div>
-                )}
+                  )
+                })()}
               </div>
             )}
           </CardContent>

@@ -82,6 +82,7 @@ export async function GET(request: NextRequest) {
         organization_id,
         merchant_code,
         merchant_name,
+        description,
         is_active,
         created_at,
         sync_status,

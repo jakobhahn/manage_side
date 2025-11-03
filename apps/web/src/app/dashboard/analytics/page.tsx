@@ -72,6 +72,24 @@ interface TimeComparisonData {
   }[]
 }
 
+interface MealTimeData {
+  period: string
+  name: string
+  timeRange: string
+  totalTransactions: number
+  totalRevenue: number
+  uniqueDays: number
+  avgRevenuePerDay: number
+  avgTransactionsPerDay: number
+  avgTransactionValue: number
+}
+
+interface MealTimeComparison {
+  revenueRatio: number
+  transactionRatio: number
+  strongerPeriod: 'lunch' | 'dinner' | null
+}
+
 interface AnalyticsData {
   weekdays: WeekdayData[]
   weeks: WeeklyData[]
@@ -79,6 +97,8 @@ interface AnalyticsData {
   weekdayDetails?: WeekdayDetailData[]
   summary?: WeekdayDetailSummary
   periods?: TimeComparisonData[]
+  mealTimes?: MealTimeData[]
+  comparison?: MealTimeComparison
 }
 
 export default function AnalyticsPage() {
@@ -87,7 +107,7 @@ export default function AnalyticsPage() {
   const [error, setError] = useState<string | null>(null)
   const [startDate, setStartDate] = useState('')
   const [endDate, setEndDate] = useState('')
-  const [activeTab, setActiveTab] = useState<'weekdays' | 'weeks' | 'hours' | 'weekday-detail' | 'time-comparison'>('weekdays')
+  const [activeTab, setActiveTab] = useState<'weekdays' | 'weeks' | 'hours' | 'weekday-detail' | 'time-comparison' | 'meal-times'>('weekdays')
   const [selectedWeekday, setSelectedWeekday] = useState('5') // Default to Friday (5)
   const [timeComparisonPeriod, setTimeComparisonPeriod] = useState<'weekly' | 'monthly'>('weekly')
 
@@ -137,6 +157,8 @@ export default function AnalyticsPage() {
       } else if (activeTab === 'time-comparison') {
         analysisType = 'time-comparison'
         params.append('period', timeComparisonPeriod)
+      } else if (activeTab === 'meal-times') {
+        analysisType = 'meal-times'
       }
 
       const response = await fetch(`/api/analytics?type=${analysisType}&${params.toString()}`, {
@@ -416,6 +438,148 @@ export default function AnalyticsPage() {
                 <div className="text-sm text-gray-600">Höchster Durchschnittswert</div>
               </div>
             </div>
+          </CardContent>
+        </Card>
+      </div>
+    )
+  }
+
+  const renderMealTimeAnalysis = () => {
+    if (!analyticsData?.mealTimes || !analyticsData?.comparison) return null
+
+    const formatCurrency = (amount: number) => {
+      return new Intl.NumberFormat('de-DE', {
+        style: 'currency',
+        currency: 'EUR'
+      }).format(amount)
+    }
+
+    const lunchData = analyticsData.mealTimes.find(m => m.period === 'lunch')
+    const dinnerData = analyticsData.mealTimes.find(m => m.period === 'dinner')
+
+    return (
+      <div className="space-y-4 sm:space-y-6">
+        {/* Summary Cards */}
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4 sm:gap-6">
+          {analyticsData.mealTimes.map((mealTime) => (
+            <Card key={mealTime.period}>
+              <CardHeader>
+                <CardTitle className="flex items-center gap-2 text-lg">
+                  <Clock className="h-4 w-4 sm:h-5 sm:w-5" />
+                  {mealTime.name}
+                </CardTitle>
+                <CardDescription className="text-sm">
+                  {mealTime.timeRange}
+                </CardDescription>
+              </CardHeader>
+              <CardContent className="space-y-4">
+                <div className="grid grid-cols-2 gap-4">
+                  <div>
+                    <p className="text-2xl font-bold text-blue-600">
+                      {formatCurrency(mealTime.totalRevenue)}
+                    </p>
+                    <p className="text-xs text-gray-500">Gesamtumsatz</p>
+                  </div>
+                  <div>
+                    <p className="text-2xl font-bold text-green-600">
+                      {mealTime.totalTransactions}
+                    </p>
+                    <p className="text-xs text-gray-500">Transaktionen</p>
+                  </div>
+                </div>
+                <div className="grid grid-cols-2 gap-4 pt-2 border-t">
+                  <div>
+                    <p className="text-lg font-semibold">
+                      {formatCurrency(mealTime.avgRevenuePerDay)}
+                    </p>
+                    <p className="text-xs text-gray-500">Ø pro Tag</p>
+                  </div>
+                  <div>
+                    <p className="text-lg font-semibold">
+                      {formatCurrency(mealTime.avgTransactionValue)}
+                    </p>
+                    <p className="text-xs text-gray-500">Ø pro Transaktion</p>
+                  </div>
+                </div>
+                <div className="text-center pt-2 border-t">
+                  <p className="text-sm text-gray-600">
+                    {mealTime.uniqueDays} Tage mit Verkäufen
+                  </p>
+                </div>
+              </CardContent>
+            </Card>
+          ))}
+        </div>
+
+        {/* Comparison Analysis */}
+        <Card>
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2 text-lg">
+              <TrendingUp className="h-4 w-4 sm:h-5 sm:w-5" />
+              Vergleichsanalyse
+            </CardTitle>
+            <CardDescription className="text-sm">
+              Direkter Vergleich zwischen Mittags- und Abendgeschäft
+            </CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-6">
+            {lunchData && dinnerData && (
+              <>
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                  <div className="text-center p-4 bg-blue-50 rounded-lg">
+                    <p className="text-2xl font-bold text-blue-600">
+                      {analyticsData.comparison.strongerPeriod === 'dinner' ? 'Abend' : 'Mittag'}
+                    </p>
+                    <p className="text-sm text-gray-600">Stärkere Zeit</p>
+                  </div>
+                  <div className="text-center p-4 bg-green-50 rounded-lg">
+                    <p className="text-2xl font-bold text-green-600">
+                      {analyticsData.comparison.revenueRatio.toFixed(1)}x
+                    </p>
+                    <p className="text-sm text-gray-600">Umsatz-Verhältnis</p>
+                  </div>
+                  <div className="text-center p-4 bg-purple-50 rounded-lg">
+                    <p className="text-2xl font-bold text-purple-600">
+                      {analyticsData.comparison.transactionRatio.toFixed(1)}x
+                    </p>
+                    <p className="text-sm text-gray-600">Transaktions-Verhältnis</p>
+                  </div>
+                </div>
+
+                <div className="space-y-4">
+                  <h4 className="font-semibold text-gray-900">Detailvergleich</h4>
+                  <div className="overflow-x-auto">
+                    <table className="w-full text-sm">
+                      <thead>
+                        <tr className="border-b">
+                          <th className="text-left py-2">Zeitraum</th>
+                          <th className="text-right py-2">Umsatz</th>
+                          <th className="text-right py-2">Transaktionen</th>
+                          <th className="text-right py-2">Ø pro Tag</th>
+                          <th className="text-right py-2">Ø Bon-Wert</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        <tr className="border-b">
+                          <td className="py-2 font-medium">Mittag (12:00-14:30)</td>
+                          <td className="text-right py-2">{formatCurrency(lunchData.totalRevenue)}</td>
+                          <td className="text-right py-2">{lunchData.totalTransactions}</td>
+                          <td className="text-right py-2">{formatCurrency(lunchData.avgRevenuePerDay)}</td>
+                          <td className="text-right py-2">{formatCurrency(lunchData.avgTransactionValue)}</td>
+                        </tr>
+                        <tr>
+                          <td className="py-2 font-medium">Abend (17:00-23:59)</td>
+                          <td className="text-right py-2">{formatCurrency(dinnerData.totalRevenue)}</td>
+                          <td className="text-right py-2">{dinnerData.totalTransactions}</td>
+                          <td className="text-right py-2">{formatCurrency(dinnerData.avgRevenuePerDay)}</td>
+                          <td className="text-right py-2">{formatCurrency(dinnerData.avgTransactionValue)}</td>
+                        </tr>
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+              </>
+            )}
           </CardContent>
         </Card>
       </div>
@@ -766,6 +930,18 @@ export default function AnalyticsPage() {
           <span className="hidden sm:inline">Zeitvergleich</span>
           <span className="sm:hidden">Vergleich</span>
         </button>
+        <button
+          onClick={() => setActiveTab('meal-times')}
+          className={`flex-shrink-0 py-2 px-3 sm:px-4 rounded-md text-xs sm:text-sm font-medium transition-colors ${
+            activeTab === 'meal-times'
+              ? 'bg-white text-gray-900 shadow-sm'
+              : 'text-gray-600 hover:text-gray-900'
+          }`}
+        >
+          <Clock className="h-3 w-3 sm:h-4 sm:w-4 inline mr-1 sm:mr-2" />
+          <span className="hidden sm:inline">Essenszeiten</span>
+          <span className="sm:hidden">Essen</span>
+        </button>
         </div>
       </div>
 
@@ -844,6 +1020,7 @@ export default function AnalyticsPage() {
         {activeTab === 'weeks' && renderWeeklyChart()}
         {activeTab === 'hours' && renderHourlyChart()}
         {activeTab === 'time-comparison' && renderTimeComparisonChart()}
+        {activeTab === 'meal-times' && renderMealTimeAnalysis()}
       </div>
     </div>
   )

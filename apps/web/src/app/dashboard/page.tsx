@@ -43,8 +43,12 @@ export default function DashboardPage() {
   const [totalTransactions, setTotalTransactions] = useState<number>(0)
   const [lastSyncDate, setLastSyncDate] = useState<string | null>(null)
   const [todayRevenue, setTodayRevenue] = useState<number>(0)
+  const [todayTransactionCount, setTodayTransactionCount] = useState<number>(0)
+  const [bestHour, setBestHour] = useState<{hour: number, revenue: number} | null>(null)
   const [forecastData, setForecastData] = useState<any>(null)
   const [sumupMessage, setSumupMessage] = useState<{type: 'success' | 'error', message: string} | null>(null)
+  const [activeShift, setActiveShift] = useState<any>(null)
+  const [nextShift, setNextShift] = useState<any>(null)
   const supabase = createClient(
     process.env.NEXT_PUBLIC_SUPABASE_URL!,
     process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
@@ -111,6 +115,90 @@ export default function DashboardPage() {
     }
   }
 
+  const fetchStaffShifts = async () => {
+    try {
+      const { data: { session } } = await supabase.auth.getSession()
+      
+      if (!session) {
+        return
+      }
+
+      // Get current user to filter shifts
+      const { data: { user: authUser } } = await supabase.auth.getUser()
+      if (!authUser) {
+        return
+      }
+
+      const userResponse = await fetch('/api/organizations/me', {
+        headers: {
+          'Authorization': `Bearer ${session.access_token}`,
+          'Content-Type': 'application/json',
+        },
+      })
+
+      if (!userResponse.ok) {
+        return
+      }
+
+      const userData = await userResponse.json()
+      const currentUserId = userData.user.id
+
+      const now = new Date()
+      // Fetch shifts for the current user
+      // Get shifts from the last 24 hours until 7 days in the future
+      const startDate = new Date(now.getTime() - 24 * 60 * 60 * 1000)
+      const endDate = new Date(now.getTime() + 7 * 24 * 60 * 60 * 1000)
+      const response = await fetch(`/api/shifts?start_date=${startDate.toISOString()}&end_date=${endDate.toISOString()}`, {
+        headers: {
+          'Authorization': `Bearer ${session.access_token}`,
+        },
+      })
+
+      if (!response.ok) {
+        return
+      }
+
+      const data = await response.json()
+      const allShifts = data.shifts || []
+      
+      // Filter shifts for the current user
+      const userShifts = allShifts.filter((shift: any) => shift.user_id === currentUserId)
+      
+      // Find active shift (currently happening)
+      const active = userShifts.find((shift: any) => {
+        const startTime = new Date(shift.start_time)
+        const endTime = new Date(shift.end_time)
+        return startTime <= now && endTime >= now && 
+               (shift.status === 'scheduled' || shift.status === 'confirmed')
+      })
+      
+      if (active) {
+        setActiveShift(active)
+      } else {
+        setActiveShift(null)
+      }
+
+      // Find next shift (upcoming)
+      const upcoming = userShifts
+        .filter((shift: any) => {
+          const startTime = new Date(shift.start_time)
+          return startTime > now && 
+                 (shift.status === 'scheduled' || shift.status === 'confirmed')
+        })
+        .sort((a: any, b: any) => 
+          new Date(a.start_time).getTime() - new Date(b.start_time).getTime()
+        )
+
+      if (upcoming.length > 0) {
+        setNextShift(upcoming[0])
+      } else {
+        setNextShift(null)
+      }
+    } catch (err) {
+      console.error('Failed to fetch staff shifts:', err)
+    }
+  }
+
   const fetchTransactionStats = async () => {
     try {
       const { data: { session } } = await supabase.auth.getSession()
@@ -153,9 +241,13 @@ export default function DashboardPage() {
           const mostRecent = monthlyData.revenueData[0]
           setLastSyncDate(mostRecent.period_start)
         }
+      } else if (monthlyResponse.status === 403) {
+        // Silently skip if user doesn't have permission (owner/manager only)
+        console.log('User does not have permission to view revenue statistics (requires owner/manager role)')
       } else {
-        console.error('Failed to fetch monthly transaction stats:', monthlyResponse.status)
-        // Don't set to 0 if we already have a value from direct query
+        // Only log non-permission errors
+        const errorData = await monthlyResponse.json().catch(() => ({ error: { message: 'Unknown error' } }))
+        console.error('Failed to fetch monthly transaction stats:', monthlyResponse.status, errorData)
       }
 
       if (dailyResponse.ok) {
@@ -167,9 +259,12 @@ export default function DashboardPage() {
           // Don't override direct query results
           console.log('📊 API today\'s revenue:', todayRevenue, '- not setting to avoid override')
         }
+      } else if (dailyResponse.status === 403) {
+        // Silently skip if user doesn't have permission (owner/manager only)
+        console.log('User does not have permission to view revenue statistics (requires owner/manager role)')
       } else {
+        // Only log non-permission errors
         console.error('Failed to fetch daily revenue stats:', dailyResponse.status)
-        // Don't set to 0 if we already have a value from direct query
       }
     } catch (err) {
       console.error('Error fetching transaction stats:', err)
@@ -215,10 +310,10 @@ export default function DashboardPage() {
       const startOfDay = new Date(today.getFullYear(), today.getMonth(), today.getDate())
       const endOfDay = new Date(today.getFullYear(), today.getMonth(), today.getDate() + 1)
       
-      // Fetch today's transactions directly from Supabase
+      // Fetch today's transactions directly from Supabase (with transaction_date for hour analysis)
       const { data: todayTransactions, error: todayError } = await supabase
         .from('payment_transactions')
-        .select('amount')
+        .select('amount, transaction_date')
         .eq('organization_id', organizationId)
         .gte('transaction_date', startOfDay.toISOString())
         .lt('transaction_date', endOfDay.toISOString())
@@ -228,10 +323,44 @@ export default function DashboardPage() {
         console.error('❌ Error fetching today\'s transactions:', todayError)
       } else {
         const todayRevenue = todayTransactions?.reduce((sum, t) => sum + (t.amount || 0), 0) || 0
+        const todayTransactionCount = todayTransactions?.length || 0
         console.log('✅ Direct today\'s revenue:', todayRevenue)
+        console.log('✅ Today\'s transaction count:', todayTransactionCount)
+        
         // Always set the direct revenue
         setTodayRevenue(todayRevenue)
+        setTodayTransactionCount(todayTransactionCount)
         console.log('🔄 Set todayRevenue to:', todayRevenue)
+        
+        // Calculate best hour (hour with highest revenue today)
+        if (todayTransactions && todayTransactions.length > 0) {
+          const hourlyRevenue = new Map<number, number>()
+          
+          todayTransactions.forEach((transaction: any) => {
+            const transactionDate = new Date(transaction.transaction_date)
+            const hour = transactionDate.getHours()
+            const amount = parseFloat(transaction.amount) || 0
+            hourlyRevenue.set(hour, (hourlyRevenue.get(hour) || 0) + amount)
+          })
+          
+          // Find hour with highest revenue
+          let maxRevenue = 0
+          let bestHourValue = 0
+          hourlyRevenue.forEach((revenue, hour) => {
+            if (revenue > maxRevenue) {
+              maxRevenue = revenue
+              bestHourValue = hour
+            }
+          })
+          
+          if (maxRevenue > 0) {
+            setBestHour({ hour: bestHourValue, revenue: maxRevenue })
+          } else {
+            setBestHour(null)
+          }
+        } else {
+          setBestHour(null)
+        }
       }
 
       // Fetch total transaction count using count() for better performance
@@ -389,6 +518,15 @@ export default function DashboardPage() {
           console.warn('⚠️ Failed to fetch forecast data:', error)
         }
       }
+      
+      // Fetch staff shifts if user is staff
+      if (orgData.user?.role === 'staff') {
+        try {
+          await fetchStaffShifts()
+        } catch (error) {
+          console.warn('⚠️ Failed to fetch staff shifts:', error)
+        }
+      }
     } catch (error: any) {
       console.error('Failed to fetch dashboard data:', error)
       setError(error.message)
@@ -519,7 +657,7 @@ export default function DashboardPage() {
           title: "Clock In/Out",
           description: "Record your work hours",
           icon: Clock,
-          href: "/dashboard/timeclock",
+          href: "/dashboard/time-clock",
           variant: "outline" as const
         }
       )
@@ -701,34 +839,142 @@ export default function DashboardPage() {
         <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-4 mb-8">
           {renderQuickStats().map((stat, index) => {
             const IconComponent = stat.icon
+            const isTodayRevenue = stat.title === "Today's Revenue"
+            
             return (
-              <div key={index} className="bg-white rounded-2xl flat-shadow-lg p-6">
+              <div key={index} className={`bg-white rounded-2xl flat-shadow-lg ${isTodayRevenue ? 'md:col-span-2 p-6' : 'p-6'}`}>
                 <div className="flex items-center justify-between mb-4">
                   <h3 className="text-sm font-medium text-gray-600">{stat.title}</h3>
                   <IconComponent className="h-5 w-5 text-gray-400" />
                 </div>
-                <div className="text-2xl font-bold text-gray-900 mb-2">{stat.value}</div>
-                {stat.link ? (
-                  <Link href={stat.link as any} className="text-sm text-gray-500 hover:text-gray-700 transition-colors">
-                    {stat.title === "Team Members" ? "Manage users" : 
-                     stat.title === "Today's Revenue" ? "View analytics" :
-                     stat.title === "Active Shifts" ? "View schedule" : 
-                     stat.title === "SumUp Transactions" ? "Sync & manage" : "View details"}
-                  </Link>
+                
+                {isTodayRevenue ? (
+                  <div className="space-y-4">
+                    <div>
+                      <div className="text-2xl font-bold text-gray-900 mb-1">
+                        {todayRevenue > 0 ? `€${todayRevenue.toFixed(2)}` : "€0.00"}
+                      </div>
+                      <p className="text-sm text-gray-500">Heutige Umsätze</p>
+                    </div>
+                    <div className="grid grid-cols-2 gap-4 pt-3 border-t border-gray-100">
+                      <div>
+                        <div className="text-lg font-semibold text-gray-900 mb-1">
+                          {todayTransactionCount.toLocaleString()}
+                        </div>
+                        <p className="text-xs text-gray-500">Transaktionen</p>
+                      </div>
+                      <div>
+                        <div className="text-lg font-semibold text-gray-900 mb-1">
+                          {bestHour ? `${bestHour.hour.toString().padStart(2, '0')}:00` : '-'}
+                        </div>
+                        <p className="text-xs text-gray-500">
+                          {bestHour ? `€${bestHour.revenue.toFixed(2)}` : 'Beste Stunde'}
+                        </p>
+                      </div>
+                    </div>
+                    {stat.link && (
+                      <Link href={stat.link as any} className="text-sm text-gray-500 hover:text-gray-700 transition-colors inline-block">
+                        View analytics
+                      </Link>
+                    )}
+                  </div>
                 ) : (
-                  <p className="text-sm text-gray-500">
-                    {organization?.slug || 'Restaurant management platform'}
-                  </p>
-                )}
-                {stat.title === "SumUp Transactions" && lastSyncDate && (
-                  <p className="text-xs text-gray-400 mt-1">
-                    Last sync: {new Date(lastSyncDate).toLocaleDateString('de-DE')}
-                  </p>
+                  <>
+                    <div className="text-2xl font-bold text-gray-900 mb-2">{stat.value}</div>
+                    {stat.link ? (
+                      <Link href={stat.link as any} className="text-sm text-gray-500 hover:text-gray-700 transition-colors">
+                        {stat.title === "Team Members" ? "Manage users" : 
+                         stat.title === "Active Shifts" ? "View schedule" : 
+                         stat.title === "SumUp Transactions" ? "Sync & manage" : "View details"}
+                      </Link>
+                    ) : (
+                      <p className="text-sm text-gray-500">
+                        {organization?.slug || 'Restaurant management platform'}
+                      </p>
+                    )}
+                    {stat.title === "SumUp Transactions" && lastSyncDate && (
+                      <p className="text-xs text-gray-400 mt-1">
+                        Last sync: {new Date(lastSyncDate).toLocaleDateString('de-DE')}
+                      </p>
+                    )}
+                  </>
                 )}
               </div>
             )
           })}
         </div>
+
+        {/* Staff Shift Information */}
+        {user?.role === 'staff' && (activeShift || nextShift) && (
+          <div className="bg-white rounded-2xl flat-shadow-lg overflow-hidden mb-8">
+            <div className="px-6 py-4 border-b border-gray-200">
+              <h2 className="text-lg font-semibold text-gray-900">Meine Schichten</h2>
+            </div>
+            <div className="px-6 py-4 space-y-4">
+              {/* Active Shift */}
+              {activeShift && (
+                <div className="p-4 bg-blue-50 rounded-xl border-2 border-blue-200">
+                  <div className="flex items-center justify-between mb-2">
+                    <div className="flex items-center space-x-2">
+                      <div className="w-2 h-2 bg-blue-500 rounded-full animate-pulse"></div>
+                      <h3 className="text-sm font-semibold text-blue-900">Aktive Schicht</h3>
+                    </div>
+                  </div>
+                  <div className="mt-3 space-y-2">
+                    <div className="flex items-center space-x-2">
+                      <span className="text-xs font-medium text-blue-800">Position:</span>
+                      <span className="text-sm font-semibold text-blue-900">
+                        {typeof activeShift.position === 'object' && activeShift.position !== null
+                          ? activeShift.position.name
+                          : (activeShift.position || 'Schicht')}
+                      </span>
+                    </div>
+                    <div className="flex items-center space-x-2">
+                      <Clock className="h-4 w-4 text-blue-600" />
+                      <span className="text-sm text-blue-800">
+                        {new Date(activeShift.start_time).toLocaleTimeString('de-DE', { hour: '2-digit', minute: '2-digit' })} - {new Date(activeShift.end_time).toLocaleTimeString('de-DE', { hour: '2-digit', minute: '2-digit' })}
+                      </span>
+                    </div>
+                    <div className="text-xs text-blue-600 mt-2">
+                      Endet in {Math.ceil((new Date(activeShift.end_time).getTime() - new Date().getTime()) / (1000 * 60))} Minuten
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {/* Next Shift */}
+              {nextShift && (
+                <div className="p-4 bg-gray-50 rounded-xl border-2 border-gray-200">
+                  <div className="flex items-center justify-between mb-2">
+                    <div className="flex items-center space-x-2">
+                      <Clock className="h-4 w-4 text-gray-600" />
+                      <h3 className="text-sm font-semibold text-gray-900">Nächste Schicht</h3>
+                    </div>
+                  </div>
+                  <div className="mt-3 space-y-2">
+                    <div className="flex items-center space-x-2">
+                      <span className="text-xs font-medium text-gray-600">Position:</span>
+                      <span className="text-sm font-semibold text-gray-900">
+                        {typeof nextShift.position === 'object' && nextShift.position !== null
+                          ? nextShift.position.name
+                          : (nextShift.position || 'Schicht')}
+                      </span>
+                    </div>
+                    <div className="flex items-center space-x-2">
+                      <Clock className="h-4 w-4 text-gray-600" />
+                      <span className="text-sm text-gray-800">
+                        {new Date(nextShift.start_time).toLocaleDateString('de-DE', { weekday: 'short', day: '2-digit', month: '2-digit' })} - {new Date(nextShift.start_time).toLocaleTimeString('de-DE', { hour: '2-digit', minute: '2-digit' })} bis {new Date(nextShift.end_time).toLocaleTimeString('de-DE', { hour: '2-digit', minute: '2-digit' })}
+                      </span>
+                    </div>
+                    <div className="text-xs text-gray-600 mt-2">
+                      Startet in {Math.ceil((new Date(nextShift.start_time).getTime() - new Date().getTime()) / (1000 * 60))} Minuten
+                    </div>
+                  </div>
+                </div>
+              )}
+            </div>
+          </div>
+        )}
 
         {/* Quick Actions */}
         <div className="bg-white rounded-2xl flat-shadow-lg overflow-hidden">

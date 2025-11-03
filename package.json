@@ -11,13 +11,15 @@
   ],
   "scripts": {
     "build": "turbo run build",
+    "build:vercel": "./scripts/migrate-and-build.sh",
     "dev": "turbo run dev",
     "lint": "turbo run lint",
     "test": "turbo run test",
     "type-check": "turbo run type-check",
     "clean": "turbo run clean",
     "docs:dev": "cd docs && npm run dev",
-    "docs:build": "cd docs && npm run build"
+    "docs:build": "cd docs && npm run build",
+    "migrate": "supabase db push"
   },
   "devDependencies": {
     "turbo": "^2.5.6"

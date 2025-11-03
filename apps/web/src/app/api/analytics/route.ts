@@ -1,6 +1,14 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@supabase/supabase-js'
 
+// Utility function to convert UTC date to Berlin timezone
+function convertToBerlinTime(utcDate: Date): Date {
+  // Berlin is UTC+1 in winter (CET) and UTC+2 in summer (CEST)
+  // We'll use the Intl.DateTimeFormat to handle DST automatically
+  const berlinTime = new Date(utcDate.toLocaleString("en-US", {timeZone: "Europe/Berlin"}))
+  return berlinTime
+}
+
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!
 const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY!
 
@@ -91,6 +99,9 @@ export async function GET(request: NextRequest) {
         const period = searchParams.get('period') || 'weekly'
         analyticsData = await getTimeComparisonAnalysis(supabase, organizationId, dateFilter, period)
         break
+      case 'meal-times':
+        analyticsData = await getMealTimeAnalysis(supabase, organizationId, dateFilter)
+        break
       case 'overview':
       default:
         analyticsData = await getOverviewAnalysis(supabase, organizationId, dateFilter)
@@ -175,10 +186,11 @@ async function getWeekdayAnalysis(supabase: any, organizationId: string, dateFil
     const weekdayGroups: { [key: number]: { transactions: number[], dates: Set<string> } } = {}
     
     allTransactions.forEach((transaction: any) => {
-      const date = new Date(transaction.transaction_date)
-      const dayOfWeek = date.getDay() // 0 = Sunday, 1 = Monday, etc.
+      const utcDate = new Date(transaction.transaction_date)
+      const berlinDate = convertToBerlinTime(utcDate)
+      const dayOfWeek = berlinDate.getDay() // 0 = Sunday, 1 = Monday, etc.
       const amount = parseFloat(transaction.amount) || 0
-      const dateKey = date.toISOString().split('T')[0] // YYYY-MM-DD
+      const dateKey = berlinDate.toISOString().split('T')[0] // YYYY-MM-DD
 
       if (!weekdayGroups[dayOfWeek]) {
         weekdayGroups[dayOfWeek] = { transactions: [], dates: new Set() }
@@ -270,9 +282,10 @@ async function getWeekdayDetailAnalysis(supabase: any, organizationId: string, d
   const dateGroups: { [key: string]: { transactions: number[], weekday: number, date: string } } = {}
   
   allTransactions.forEach((transaction: any) => {
-    const date = new Date(transaction.transaction_date)
-    const dayOfWeek = date.getDay()
-    const dateKey = date.toISOString().split('T')[0] // YYYY-MM-DD
+    const utcDate = new Date(transaction.transaction_date)
+    const berlinDate = convertToBerlinTime(utcDate)
+    const dayOfWeek = berlinDate.getDay()
+    const dateKey = berlinDate.toISOString().split('T')[0] // YYYY-MM-DD
     const amount = parseFloat(transaction.amount) || 0
 
     if (!dateGroups[dateKey]) {
@@ -392,9 +405,10 @@ async function getWeeklyAnalysis(supabase: any, organizationId: string, dateFilt
   // Process transactions by week
   if (allTransactions && allTransactions.length > 0) {
     allTransactions.forEach((transaction: any) => {
-      const date = new Date(transaction.transaction_date)
-      const year = date.getFullYear()
-      const weekNumber = getWeekNumber(date)
+      const utcDate = new Date(transaction.transaction_date)
+      const berlinDate = convertToBerlinTime(utcDate)
+      const year = berlinDate.getFullYear()
+      const weekNumber = getWeekNumber(berlinDate)
       const weekKey = `${year}-${weekNumber}`
       const amount = parseFloat(transaction.amount) || 0
 
@@ -459,9 +473,9 @@ async function getWeeklyAnalysis(supabase: any, organizationId: string, dateFilt
   }
   
   // Merge with actual transaction data
-  for (const [weekKey, weekData] of weekMap.entries()) {
+  weekMap.forEach((weekData, weekKey) => {
     allWeeks[weekKey] = weekData
-  }
+  })
 
   // Convert to array format
   const weeks = Array.from(Object.entries(allWeeks)).map(([weekKey, data]) => {
@@ -557,8 +571,9 @@ async function getHourlyAnalysis(supabase: any, organizationId: string, dateFilt
   // Process transactions by hour
   if (allTransactions && allTransactions.length > 0) {
     allTransactions.forEach((transaction: any) => {
-      const date = new Date(transaction.transaction_date)
-      const hour = date.getHours()
+      const utcDate = new Date(transaction.transaction_date)
+      const berlinDate = convertToBerlinTime(utcDate)
+      const hour = berlinDate.getHours()
       const amount = parseFloat(transaction.amount) || 0
 
       hours[hour].transactions++
@@ -652,18 +667,19 @@ async function getTimeComparisonAnalysis(supabase: any, organizationId: string, 
   // Process transactions by period and hour
   if (allTransactions && allTransactions.length > 0) {
     allTransactions.forEach((transaction: any) => {
-      const date = new Date(transaction.transaction_date)
-      const hour = date.getHours()
+      const utcDate = new Date(transaction.transaction_date)
+      const berlinDate = convertToBerlinTime(utcDate)
+      const hour = berlinDate.getHours()
       const amount = parseFloat(transaction.amount) || 0
 
       let periodKey: string
       if (period === 'weekly') {
-        const year = date.getFullYear()
-        const weekNumber = getWeekNumber(date)
+        const year = berlinDate.getFullYear()
+        const weekNumber = getWeekNumber(berlinDate)
         periodKey = `${year}-KW${weekNumber}`
       } else { // monthly
-        const year = date.getFullYear()
-        const month = date.getMonth() + 1
+        const year = berlinDate.getFullYear()
+        const month = berlinDate.getMonth() + 1
         periodKey = `${year}-${month.toString().padStart(2, '0')}`
       }
 
@@ -702,4 +718,137 @@ async function getTimeComparisonAnalysis(supabase: any, organizationId: string, 
   console.log(`📊 Generated ${periods.length} periods for time comparison`)
 
   return { periods }
+}
+
+async function getMealTimeAnalysis(supabase: any, organizationId: string, dateFilter: string) {
+  // Build query with date filter and pagination
+  let allTransactions: any[] = []
+  let page = 0
+  const pageSize = 1000
+  let hasMore = true
+
+  while (hasMore) {
+    let query = supabase
+      .from('payment_transactions')
+      .select('amount, transaction_date')
+      .eq('organization_id', organizationId)
+      .eq('status', 'SUCCESSFUL')
+      .order('transaction_date', { ascending: false })
+      .range(page * pageSize, (page + 1) * pageSize - 1)
+
+    // Apply date filter if provided
+    if (dateFilter) {
+      const [startDate, endDate] = dateFilter.split('|')
+      if (startDate) {
+        query = query.gte('transaction_date', startDate)
+      }
+      if (endDate) {
+        query = query.lt('transaction_date', endDate)
+      }
+    }
+
+    const { data: transactions, error } = await query
+
+    if (error) {
+      console.error('Meal time analysis error:', error)
+      return { mealTimes: [] }
+    }
+
+    if (!transactions || transactions.length === 0) {
+      hasMore = false
+    } else {
+      allTransactions = [...allTransactions, ...transactions]
+      hasMore = transactions.length === pageSize
+      page++
+    }
+
+    // Safety limit to prevent infinite loops
+    if (page > 50) {
+      console.warn('Reached safety limit of 50 pages')
+      break
+    }
+  }
+
+  console.log(`📊 Meal time analysis: Found ${allTransactions.length} total transactions with pagination`)
+
+  // Define meal time periods
+  const mealPeriods = {
+    lunch: { name: 'Mittagszeit', start: 12, end: 14.5, transactions: 0, revenue: 0, days: new Set() },
+    dinner: { name: 'Abendzeit', start: 17, end: 23.99, transactions: 0, revenue: 0, days: new Set() }
+  }
+
+  // Process transactions by meal time
+  if (allTransactions && allTransactions.length > 0) {
+    allTransactions.forEach((transaction: any) => {
+      const utcDate = new Date(transaction.transaction_date)
+      const berlinDate = convertToBerlinTime(utcDate)
+      const hour = berlinDate.getHours() + (berlinDate.getMinutes() / 60) // Include minutes for 14:30 cutoff
+      const amount = parseFloat(transaction.amount) || 0
+      const dateKey = berlinDate.toISOString().split('T')[0]
+
+      // Check if transaction falls in lunch time (12:00 - 14:30)
+      if (hour >= mealPeriods.lunch.start && hour <= mealPeriods.lunch.end) {
+        mealPeriods.lunch.transactions++
+        mealPeriods.lunch.revenue += amount
+        mealPeriods.lunch.days.add(dateKey)
+      }
+      
+      // Check if transaction falls in dinner time (17:00 - 23:59)
+      if (hour >= mealPeriods.dinner.start && hour <= mealPeriods.dinner.end) {
+        mealPeriods.dinner.transactions++
+        mealPeriods.dinner.revenue += amount
+        mealPeriods.dinner.days.add(dateKey)
+      }
+    })
+  }
+
+  // Calculate averages and format results
+  const mealTimes = Object.entries(mealPeriods).map(([key, data]) => {
+    const uniqueDays = data.days.size
+    const avgRevenuePerDay = uniqueDays > 0 ? data.revenue / uniqueDays : 0
+    const avgTransactionsPerDay = uniqueDays > 0 ? data.transactions / uniqueDays : 0
+    const avgTransactionValue = data.transactions > 0 ? data.revenue / data.transactions : 0
+
+    return {
+      period: key,
+      name: data.name,
+      timeRange: key === 'lunch' ? '12:00 - 14:30' : '17:00 - 23:59',
+      totalTransactions: data.transactions,
+      totalRevenue: data.revenue,
+      uniqueDays: uniqueDays,
+      avgRevenuePerDay: avgRevenuePerDay,
+      avgTransactionsPerDay: avgTransactionsPerDay,
+      avgTransactionValue: avgTransactionValue
+    }
+  })
+
+  // Calculate comparison metrics
+  const lunchData = mealTimes.find(m => m.period === 'lunch')
+  const dinnerData = mealTimes.find(m => m.period === 'dinner')
+  
+  const comparison = {
+    revenueRatio: dinnerData && lunchData && lunchData.totalRevenue > 0 
+      ? dinnerData.totalRevenue / lunchData.totalRevenue 
+      : 0,
+    transactionRatio: dinnerData && lunchData && lunchData.totalTransactions > 0 
+      ? dinnerData.totalTransactions / lunchData.totalTransactions 
+      : 0,
+    strongerPeriod: dinnerData && lunchData 
+      ? (dinnerData.totalRevenue > lunchData.totalRevenue ? 'dinner' : 'lunch')
+      : null
+  }
+
+  console.log(`📊 Meal time analysis completed:`)
+  console.log(`📊 Lunch: ${lunchData?.totalTransactions} transactions, €${lunchData?.totalRevenue.toFixed(2)}`)
+  console.log(`📊 Dinner: ${dinnerData?.totalTransactions} transactions, €${dinnerData?.totalRevenue.toFixed(2)}`)
+
+  return { 
+    mealTimes,
+    comparison,
+    summary: {
+      totalPeriods: 2,
+      totalTransactions: mealTimes.reduce((sum, m) => sum + m.totalTransactions, 0),
+      totalRevenue: mealTimes.reduce((sum, m) => sum + m.totalRevenue, 0)
+    }
+  }
 }

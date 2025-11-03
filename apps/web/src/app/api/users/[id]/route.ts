@@ -60,7 +60,7 @@ export async function GET(
     // Get the requested user
     const { data: userData, error: userDataError } = await supabase
       .from('users')
-      .select('id, name, email, role, is_active, last_login, created_at, updated_at')
+      .select('id, name, email, role, is_active, last_login, hourly_rate, position_id, employment_type, created_at, updated_at')
       .eq('id', userId)
       .eq('organization_id', currentUserData.organization_id)
       .single()
@@ -99,7 +99,7 @@ export async function PATCH(
 
     const token = authHeader.split(' ')[1]
     const { id: userId } = await params
-    const { name, email, role, is_active } = await request.json()
+    const { name, email, role, is_active, hourly_rate, position_id, employment_type } = await request.json()
 
     // Create Supabase client with service role key for admin operations
     const supabase = createClient(supabaseUrl, supabaseServiceKey)
@@ -156,6 +156,44 @@ export async function PATCH(
     if (name !== undefined) updateData.name = name
     if (role !== undefined) updateData.role = role
     if (is_active !== undefined) updateData.is_active = is_active
+    if (hourly_rate !== undefined) {
+      updateData.hourly_rate = hourly_rate === '' || hourly_rate === null ? null : parseFloat(hourly_rate.toString())
+    }
+    if (employment_type !== undefined) {
+      // Validate employment_type
+      if (employment_type && !['mini', 'teilzeit', 'vollzeit', 'werkstudent'].includes(employment_type)) {
+        return NextResponse.json(
+          { error: { message: 'Invalid employment_type. Must be one of: mini, teilzeit, vollzeit, werkstudent' } },
+          { status: 400 }
+        )
+      }
+      updateData.employment_type = employment_type === '' ? null : employment_type
+    }
+    if (position_id !== undefined) {
+      // Validate position_id if provided (must belong to same organization)
+      if (position_id && position_id !== null) {
+        const { data: positionData, error: positionError } = await supabase
+          .from('positions')
+          .select('id, organization_id')
+          .eq('id', position_id)
+          .single()
+        
+        if (positionError || !positionData) {
+          return NextResponse.json(
+            { error: { message: 'Position not found' } },
+            { status: 404 }
+          )
+        }
+        
+        if (positionData.organization_id !== currentUserData.organization_id) {
+          return NextResponse.json(
+            { error: { message: 'Cannot use position from different organization' } },
+            { status: 403 }
+          )
+        }
+      }
+      updateData.position_id = position_id === '' ? null : position_id
+    }
     updateData.updated_at = new Date().toISOString()
 
     // Update user in public.users table
@@ -163,7 +201,7 @@ export async function PATCH(
       .from('users')
       .update(updateData)
       .eq('id', userId)
-      .select('id, name, email, role, is_active, last_login, created_at, updated_at')
+      .select('id, name, email, role, is_active, last_login, hourly_rate, position_id, employment_type, created_at, updated_at')
       .single()
 
     if (updateError) {

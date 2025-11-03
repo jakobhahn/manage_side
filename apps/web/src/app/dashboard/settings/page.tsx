@@ -11,7 +11,8 @@ import {
   Settings, 
   LogOut,
   Loader2,
-  Check
+  Check,
+  MapPin
 } from 'lucide-react'
 import Link from 'next/link'
 
@@ -19,6 +20,7 @@ interface Organization {
   id: string
   name: string
   slug: string
+  address?: string
   created_at: string
 }
 
@@ -39,7 +41,8 @@ export default function SettingsPage() {
   const [success, setSuccess] = useState<string | null>(null)
   const [formData, setFormData] = useState({
     name: '',
-    slug: ''
+    slug: '',
+    address: ''
   })
   
   const supabase = createClient(
@@ -95,7 +98,8 @@ export default function SettingsPage() {
         setOrganization(orgData.organization)
         setFormData({
           name: orgData.organization.name,
-          slug: orgData.organization.slug
+          slug: orgData.organization.slug,
+          address: orgData.organization.address || ''
         })
       }
       
@@ -341,6 +345,24 @@ export default function SettingsPage() {
                 </div>
                 <p className="text-xs text-gray-500 break-words">
                   hans-app.com/{formData.slug || 'your-slug'}
+                </p>
+              </div>
+
+              <div className="space-y-2">
+                <label htmlFor="address" className="text-sm font-medium text-gray-700">Address</label>
+                <div className="relative">
+                  <MapPin className="absolute left-4 top-4 h-4 w-4 text-gray-400" />
+                  <textarea
+                    id="address"
+                    placeholder="Enter your restaurant address for weather data..."
+                    value={formData.address}
+                    onChange={(e) => handleInputChange('address', e.target.value)}
+                    rows={3}
+                    className="w-full pl-12 pr-4 py-3 border border-gray-200 rounded-xl focus:ring-2 focus:ring-gray-900 focus:border-transparent transition-all duration-200 text-sm resize-none"
+                  />
+                </div>
+                <p className="text-xs text-gray-500">
+                  This address will be used to fetch weather data for forecasting and analytics.
                 </p>
               </div>
 

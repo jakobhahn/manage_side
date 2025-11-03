@@ -74,6 +74,16 @@ interface ForecastResponse {
   }
 }
 
+interface HourlyWeatherData {
+  hour: number
+  temperature: number
+  precipitation: number
+  weather_code: number
+  wind_speed: number
+  humidity: number
+  pressure: number
+}
+
 export default function ForecastPage() {
   const [forecastData, setForecastData] = useState<ForecastResponse | null>(null)
   const [isLoading, setIsLoading] = useState(true)
@@ -81,6 +91,9 @@ export default function ForecastPage() {
   const [startDate, setStartDate] = useState<string>('')
   const [endDate, setEndDate] = useState<string>('')
   const [selectedView, setSelectedView] = useState<'calendar' | 'chart'>('calendar')
+  const [selectedDate, setSelectedDate] = useState<string | null>(null)
+  const [hourlyData, setHourlyData] = useState<HourlyWeatherData[]>([])
+  const [isLoadingHourly, setIsLoadingHourly] = useState(false)
   
   const supabase = createClient(
     process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -158,6 +171,45 @@ export default function ForecastPage() {
     } finally {
       setIsLoading(false)
     }
+  }
+
+  const fetchHourlyData = async (date: string) => {
+    try {
+      setIsLoadingHourly(true)
+      
+      const { data: { session } } = await supabase.auth.getSession()
+      if (!session) return
+
+      // Fetch hourly weather data for the selected date
+      const response = await fetch(`/api/weather/sync?startDate=${date}&endDate=${date}`, {
+        headers: {
+          'Authorization': `Bearer ${session.access_token}`,
+          'Content-Type': 'application/json',
+        },
+      })
+      
+      if (!response.ok) {
+        throw new Error('Failed to fetch hourly data')
+      }
+      
+      const data = await response.json()
+      
+      // Filter data for the specific date and sort by hour
+      const dayData = (data.data || [])
+        .filter((item: any) => item.date === date)
+        .sort((a: any, b: any) => a.hour - b.hour)
+      
+      setHourlyData(dayData)
+    } catch (err) {
+      console.error('Error fetching hourly data:', err)
+    } finally {
+      setIsLoadingHourly(false)
+    }
+  }
+
+  const handleDayClick = (date: string) => {
+    setSelectedDate(date)
+    fetchHourlyData(date)
   }
 
   const getTrendIcon = (trend: string) => {
@@ -304,10 +356,12 @@ export default function ForecastPage() {
                 <div
                   key={dayIndex}
                   className={`
-                    border rounded-lg p-3 min-h-[120px] 
+                    border rounded-lg p-3 min-h-[120px] cursor-pointer transition-all hover:shadow-md
                     ${isToday ? 'bg-blue-50 border-blue-300' : 'bg-white border-gray-200'}
                     ${isPast ? 'opacity-60' : ''}
+                    ${selectedDate === day.dateStr ? 'ring-2 ring-blue-500' : ''}
                   `}
+                  onClick={() => handleDayClick(day.dateStr)}
                 >
                   <div className="flex items-center justify-between mb-2">
                     <div className="text-sm font-medium text-gray-900">
@@ -380,7 +434,13 @@ export default function ForecastPage() {
           const isToday = day.date === new Date().toISOString().split('T')[0]
           
           return (
-            <div key={index} className="flex items-end space-x-2 p-3 bg-white rounded-lg border">
+            <div 
+              key={index} 
+              className={`flex items-end space-x-2 p-3 bg-white rounded-lg border cursor-pointer transition-all hover:shadow-md ${
+                selectedDate === day.date ? 'ring-2 ring-blue-500' : ''
+              }`}
+              onClick={() => handleDayClick(day.date)}
+            >
               <div className="flex-1">
                 <div className="flex items-center justify-between mb-2">
                   <div className="text-sm font-medium text-gray-900">
@@ -441,6 +501,174 @@ export default function ForecastPage() {
             </div>
           )
         })}
+      </div>
+    )
+  }
+
+  const getWeatherCodeIcon = (code: number) => {
+    if (code <= 1) return <Sun className="h-4 w-4 text-yellow-500" />
+    if (code <= 3) return <Cloud className="h-4 w-4 text-gray-500" />
+    return <CloudRain className="h-4 w-4 text-blue-500" />
+  }
+
+  const getWeatherCodeText = (code: number) => {
+    if (code === 0) return 'Klar'
+    if (code === 1) return 'Meist klar'
+    if (code === 2) return 'Teilweise bewölkt'
+    if (code === 3) return 'Bewölkt'
+    if (code >= 45 && code <= 48) return 'Nebel'
+    if (code >= 51 && code <= 57) return 'Nieselregen'
+    if (code >= 61 && code <= 67) return 'Regen'
+    if (code >= 71 && code <= 77) return 'Schnee'
+    if (code >= 80 && code <= 82) return 'Regenschauer'
+    if (code >= 85 && code <= 86) return 'Schneeschauer'
+    if (code >= 95) return 'Gewitter'
+    return 'Unbekannt'
+  }
+
+  const renderHourlyDetail = () => {
+    if (!selectedDate) return null
+
+    const selectedForecast = forecastData?.forecast.find(f => f.date === selectedDate)
+    const formattedDate = new Date(selectedDate).toLocaleDateString('de-DE', {
+      weekday: 'long',
+      year: 'numeric',
+      month: 'long',
+      day: 'numeric'
+    })
+
+    return (
+      <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+        <div className="bg-white rounded-lg max-w-4xl w-full max-h-[90vh] overflow-y-auto">
+          <div className="p-6">
+            <div className="flex items-center justify-between mb-6">
+              <div>
+                <h2 className="text-2xl font-bold text-gray-900">{formattedDate}</h2>
+                {selectedForecast && (
+                  <div className="flex items-center space-x-4 mt-2">
+                    <div className="text-lg font-semibold text-green-600">
+                      Prognose: €{selectedForecast.forecastedRevenue.toFixed(0)}
+                    </div>
+                    {selectedForecast.actualRevenue && (
+                      <div className="text-lg text-gray-600">
+                        Tatsächlich: €{selectedForecast.actualRevenue.toFixed(0)}
+                      </div>
+                    )}
+                    <div className={`text-sm px-2 py-1 rounded ${getConfidenceColor(selectedForecast.confidence)}`}>
+                      {selectedForecast.confidence}% Sicherheit
+                    </div>
+                  </div>
+                )}
+              </div>
+              <Button 
+                variant="outline" 
+                onClick={() => setSelectedDate(null)}
+                className="text-gray-500 hover:text-gray-700"
+              >
+                ✕ Schließen
+              </Button>
+            </div>
+
+            {isLoadingHourly ? (
+              <div className="flex items-center justify-center py-12">
+                <RefreshCw className="h-8 w-8 animate-spin text-blue-500" />
+                <span className="ml-2 text-gray-600">Lade stündliche Daten...</span>
+              </div>
+            ) : hourlyData.length > 0 ? (
+              <div className="space-y-4">
+                <h3 className="text-lg font-semibold text-gray-900 mb-4">Stündliche Wettervorhersage</h3>
+                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
+                  {hourlyData.map((hour, index) => (
+                    <Card key={index} className="p-4">
+                      <div className="flex items-center justify-between mb-2">
+                        <div className="text-lg font-semibold text-gray-900">
+                          {hour.hour.toString().padStart(2, '0')}:00
+                        </div>
+                        <div className="flex items-center space-x-1">
+                          {getWeatherCodeIcon(hour.weather_code)}
+                        </div>
+                      </div>
+                      
+                      <div className="space-y-2">
+                        <div className="flex items-center justify-between">
+                          <span className="text-sm text-gray-600">Temperatur:</span>
+                          <span className="font-medium">{hour.temperature}°C</span>
+                        </div>
+                        
+                        <div className="flex items-center justify-between">
+                          <span className="text-sm text-gray-600">Niederschlag:</span>
+                          <span className="font-medium">{hour.precipitation}mm</span>
+                        </div>
+                        
+                        <div className="flex items-center justify-between">
+                          <span className="text-sm text-gray-600">Wind:</span>
+                          <span className="font-medium">{hour.wind_speed}km/h</span>
+                        </div>
+                        
+                        <div className="flex items-center justify-between">
+                          <span className="text-sm text-gray-600">Luftfeuchtigkeit:</span>
+                          <span className="font-medium">{hour.humidity}%</span>
+                        </div>
+                        
+                        <div className="flex items-center justify-between">
+                          <span className="text-sm text-gray-600">Druck:</span>
+                          <span className="font-medium">{hour.pressure}hPa</span>
+                        </div>
+                        
+                        <div className="text-xs text-gray-500 mt-2">
+                          {getWeatherCodeText(hour.weather_code)}
+                        </div>
+                      </div>
+                    </Card>
+                  ))}
+                </div>
+                
+                {/* Temperature Chart */}
+                <div className="mt-8">
+                  <h4 className="text-md font-semibold text-gray-900 mb-4">Temperaturverlauf</h4>
+                  <div className="bg-gray-50 rounded-lg p-4">
+                    <div className="flex items-end space-x-1 h-32">
+                      {hourlyData.map((hour, index) => {
+                        const maxTemp = Math.max(...hourlyData.map(h => h.temperature))
+                        const minTemp = Math.min(...hourlyData.map(h => h.temperature))
+                        const tempRange = maxTemp - minTemp || 1
+                        const height = ((hour.temperature - minTemp) / tempRange) * 100
+                        
+                        return (
+                          <div key={index} className="flex-1 flex flex-col items-center">
+                            <div className="text-xs text-gray-600 mb-1">
+                              {hour.temperature}°
+                            </div>
+                            <div 
+                              className="w-full bg-blue-500 rounded-t"
+                              style={{ height: `${Math.max(height, 10)}%` }}
+                            />
+                            <div className="text-xs text-gray-500 mt-1">
+                              {hour.hour.toString().padStart(2, '0')}
+                            </div>
+                          </div>
+                        )
+                      })}
+                    </div>
+                  </div>
+                </div>
+              </div>
+            ) : (
+              <div className="text-center py-12">
+                <Cloud className="h-12 w-12 text-gray-400 mx-auto mb-4" />
+                <p className="text-gray-600">Keine stündlichen Daten für diesen Tag verfügbar.</p>
+                <Button 
+                  onClick={() => fetchHourlyData(selectedDate)}
+                  className="mt-4"
+                  variant="outline"
+                >
+                  <RefreshCw className="h-4 w-4 mr-2" />
+                  Erneut versuchen
+                </Button>
+              </div>
+            )}
+          </div>
+        </div>
       </div>
     )
   }
@@ -678,6 +906,9 @@ export default function ForecastPage() {
           </CardContent>
         </Card>
       </div>
+
+      {/* Hourly Detail Modal */}
+      {renderHourlyDetail()}
     </div>
   )
 }

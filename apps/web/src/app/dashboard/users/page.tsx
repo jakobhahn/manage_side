@@ -18,7 +18,10 @@ import {
   Key,
   MoreVertical,
   UserCheck,
-  UserX
+  UserX,
+  Briefcase,
+  X,
+  Check
 } from 'lucide-react'
 
 interface User {
@@ -28,7 +31,26 @@ interface User {
   role: 'owner' | 'manager' | 'staff'
   is_active: boolean
   last_login: string | null
+  hourly_rate: number | null
+  employment_type: 'mini' | 'teilzeit' | 'vollzeit' | 'werkstudent' | null
   created_at: string
+  positions?: Position[]
+}
+
+interface Position {
+  id: string
+  name: string
+  description: string | null
+  color: string | null
+  is_active: boolean
+  organization_id: string
+}
+
+interface UserPosition {
+  id: string
+  user_id: string
+  position_id: string
+  position?: Position
 }
 
 interface CreateUserData {
@@ -40,6 +62,8 @@ interface CreateUserData {
 
 export default function UsersPage() {
   const [users, setUsers] = useState<User[]>([])
+  const [positions, setPositions] = useState<Position[]>([])
+  const [userPositions, setUserPositions] = useState<UserPosition[]>([])
   const [isLoading, setIsLoading] = useState(true)
   const [isCreating, setIsCreating] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -47,9 +71,13 @@ export default function UsersPage() {
   const [showEditDialog, setShowEditDialog] = useState(false)
   const [showDeleteDialog, setShowDeleteDialog] = useState(false)
   const [showResetPasswordDialog, setShowResetPasswordDialog] = useState(false)
+  const [showPositionsDialog, setShowPositionsDialog] = useState(false)
   const [editingUser, setEditingUser] = useState<User | null>(null)
   const [deletingUser, setDeletingUser] = useState<User | null>(null)
   const [resettingUser, setResettingUser] = useState<User | null>(null)
+  const [managingPositionsUser, setManagingPositionsUser] = useState<User | null>(null)
+  const [isAssigningPosition, setIsAssigningPosition] = useState(false)
+  const [isRemovingPosition, setIsRemovingPosition] = useState<string | null>(null)
   const [newPassword, setNewPassword] = useState('')
   const [openUserMenu, setOpenUserMenu] = useState<string | null>(null)
   const [createFormData, setCreateFormData] = useState<CreateUserData>({
@@ -61,7 +89,9 @@ export default function UsersPage() {
   const [editFormData, setEditFormData] = useState({
     name: '',
     email: '',
-    role: 'staff' as 'owner' | 'manager' | 'staff'
+    role: 'staff' as 'owner' | 'manager' | 'staff',
+    hourly_rate: '' as string | number,
+    employment_type: '' as 'mini' | 'teilzeit' | 'vollzeit' | 'werkstudent' | '' | null
   })
 
   const supabase = createClient(
@@ -99,7 +129,7 @@ export default function UsersPage() {
         return
       }
       
-      await fetchUsers()
+      await Promise.all([fetchUsers(), fetchPositions(), fetchUserPositions()])
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Authentication failed')
       setIsLoading(false)
@@ -135,6 +165,72 @@ export default function UsersPage() {
     }
   }
 
+  const fetchPositions = async () => {
+    try {
+      const { data: { session } } = await supabase.auth.getSession()
+      
+      if (!session) {
+        return
+      }
+
+      const response = await fetch('/api/positions', {
+        headers: {
+          'Authorization': `Bearer ${session.access_token}`,
+          'Content-Type': 'application/json',
+        },
+      })
+
+      if (response.ok) {
+        const data = await response.json()
+        setPositions(data.positions || [])
+      }
+    } catch (err) {
+      console.error('Failed to fetch positions:', err)
+    }
+  }
+
+  const fetchUserPositions = async (): Promise<User[]> => {
+    return new Promise(async (resolve) => {
+      try {
+        const { data: { session } } = await supabase.auth.getSession()
+        
+        if (!session) {
+          resolve(users)
+          return
+        }
+
+        const response = await fetch('/api/user-positions', {
+          headers: {
+            'Authorization': `Bearer ${session.access_token}`,
+            'Content-Type': 'application/json',
+          },
+        })
+
+        if (response.ok) {
+          const data = await response.json()
+          setUserPositions(data.assignments || [])
+          
+          // Merge positions with users using callback to get latest state
+          setUsers(prevUsers => {
+            const updatedUsers = prevUsers.map(user => ({
+              ...user,
+              positions: (data.assignments || []).filter(
+                (up: UserPosition) => up.user_id === user.id && up.position
+              ).map((up: UserPosition) => up.position!)
+            }))
+            resolve(updatedUsers)
+            return updatedUsers
+          })
+        } else {
+          resolve(users)
+        }
+      } catch (err) {
+        console.error('Failed to fetch user positions:', err)
+        resolve(users)
+      }
+    })
+  }
+
   const handleCreateUser = async (e: React.FormEvent) => {
     e.preventDefault()
     setIsCreating(true)
@@ -162,7 +258,7 @@ export default function UsersPage() {
         throw new Error(errorData.error?.message || 'Failed to create user')
       }
 
-      await fetchUsers()
+      await Promise.all([fetchUsers(), fetchUserPositions()])
       setShowCreateForm(false)
       setCreateFormData({ name: '', email: '', role: 'staff', password: '' })
     } catch (err) {
@@ -198,11 +294,104 @@ export default function UsersPage() {
         throw new Error(errorData.error?.message || 'Failed to update user')
       }
 
-      await fetchUsers()
+      await Promise.all([fetchUsers(), fetchUserPositions()])
       setShowEditDialog(false)
       setEditingUser(null)
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to update user')
+    }
+  }
+
+  const handleAssignPosition = async (userId: string, positionId: string) => {
+    if (isAssigningPosition) return
+    
+    setIsAssigningPosition(true)
+    setError(null)
+    
+    try {
+      const { data: { session } } = await supabase.auth.getSession()
+      
+      if (!session) {
+        router.push('/login')
+        return
+      }
+
+      const response = await fetch('/api/user-positions', {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${session.access_token}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ user_id: userId, position_id: positionId }),
+      })
+
+      if (!response.ok) {
+        const errorData = await response.json()
+        // If position is already assigned, treat it as success and just refresh
+        if (errorData.error?.message?.includes('already assigned') || 
+            errorData.error?.message?.includes('already exists') ||
+            errorData.error?.message?.includes('unique constraint')) {
+          // Position is already assigned, refresh data
+          const updatedUsers = await fetchUserPositions()
+          const updatedUser = updatedUsers.find(u => u.id === userId)
+          if (updatedUser) {
+            setManagingPositionsUser(updatedUser)
+          }
+          return // Exit successfully
+        }
+        throw new Error(errorData.error?.message || 'Fehler beim Zuweisen der Position')
+      }
+
+      // Refresh user positions and get fresh data
+      const updatedUsers = await fetchUserPositions()
+      const updatedUser = updatedUsers.find(u => u.id === userId)
+      if (updatedUser) {
+        setManagingPositionsUser(updatedUser)
+      }
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Fehler beim Zuweisen der Position')
+    } finally {
+      setIsAssigningPosition(false)
+    }
+  }
+
+  const handleRemovePosition = async (userId: string, positionId: string) => {
+    if (isRemovingPosition === positionId) return
+    
+    setIsRemovingPosition(positionId)
+    setError(null)
+    
+    try {
+      const { data: { session } } = await supabase.auth.getSession()
+      
+      if (!session) {
+        router.push('/login')
+        return
+      }
+
+      const response = await fetch(`/api/user-positions?user_id=${userId}&position_id=${positionId}`, {
+        method: 'DELETE',
+        headers: {
+          'Authorization': `Bearer ${session.access_token}`,
+          'Content-Type': 'application/json',
+        },
+      })
+
+      if (!response.ok) {
+        const errorData = await response.json()
+        throw new Error(errorData.error?.message || 'Fehler beim Entfernen der Position')
+      }
+
+      // Refresh user positions and get fresh data
+      const updatedUsers = await fetchUserPositions()
+      const updatedUser = updatedUsers.find(u => u.id === userId)
+      if (updatedUser) {
+        setManagingPositionsUser(updatedUser)
+      }
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Fehler beim Entfernen der Position')
+    } finally {
+      setIsRemovingPosition(null)
     }
   }
 
@@ -294,6 +483,16 @@ export default function UsersPage() {
       hour: '2-digit',
       minute: '2-digit'
     })
+  }
+
+  const getEmploymentTypeLabel = (type: string | null) => {
+    const labels: Record<string, string> = {
+      'mini': 'Mini',
+      'teilzeit': 'Teilzeit',
+      'vollzeit': 'Vollzeit',
+      'werkstudent': 'Werkstudent'
+    }
+    return labels[type || ''] || type
   }
 
   if (isLoading) {
@@ -444,15 +643,52 @@ export default function UsersPage() {
                         }`}>
                           {user.is_active ? 'Active' : 'Inactive'}
                         </span>
+                        {user.employment_type && (
+                          <span className="inline-flex items-center px-2 py-1 rounded-full text-xs font-medium bg-blue-100 text-blue-800">
+                            {getEmploymentTypeLabel(user.employment_type)}
+                          </span>
+                        )}
                       </div>
                       <div className="flex items-center space-x-2 mt-1">
                         <Mail className="h-3 w-3 text-gray-400" />
                         <span className="text-xs text-gray-500">{user.email}</span>
                       </div>
-                      <div className="mt-1">
+                      <div className="flex items-center space-x-4 mt-1">
                         <span className="text-xs text-gray-500">
                           Last login: {formatLastLogin(user.last_login)}
                         </span>
+                        {user.hourly_rate !== null && (
+                          <span className="text-xs text-gray-500">
+                            Stundenlohn: {user.hourly_rate.toFixed(2)} €/h
+                          </span>
+                        )}
+                        {user.employment_type && (
+                          <span className="text-xs text-gray-500">
+                            Lohnart: {getEmploymentTypeLabel(user.employment_type)}
+                          </span>
+                        )}
+                      </div>
+                      {/* User Positions */}
+                      <div className="mt-2">
+                        {user.positions && user.positions.length > 0 ? (
+                          <div className="flex flex-wrap items-center gap-1.5">
+                            {user.positions.map((position) => (
+                              <span
+                                key={position.id}
+                                className="inline-flex items-center px-2.5 py-0.5 rounded-md text-xs font-semibold text-white shadow-sm transition-all hover:shadow-md"
+                                style={{ 
+                                  backgroundColor: position.color || '#6b7280',
+                                  borderColor: position.color || '#6b7280'
+                                }}
+                                title={position.description || position.name}
+                              >
+                                {position.name}
+                              </span>
+                            ))}
+                          </div>
+                        ) : (
+                          <span className="text-xs text-gray-400 italic">Keine Positionen zugewiesen</span>
+                        )}
                       </div>
                     </div>
                   </div>
@@ -486,7 +722,9 @@ export default function UsersPage() {
                               setEditFormData({
                                 name: user.name,
                                 email: user.email,
-                                role: user.role
+                                role: user.role,
+                                hourly_rate: user.hourly_rate?.toString() || '',
+                                employment_type: user.employment_type || ''
                               })
                               setShowEditDialog(true)
                               setOpenUserMenu(null)
@@ -508,6 +746,22 @@ export default function UsersPage() {
                           >
                             <Key className="h-4 w-4" />
                             <span>Reset Password</span>
+                          </button>
+                          
+                          <button
+                            onClick={async () => {
+                              setOpenUserMenu(null)
+                              // Refresh user positions before opening dialog
+                              const updatedUsers = await fetchUserPositions()
+                              // Find user with latest positions
+                              const updatedUser = updatedUsers.find(u => u.id === user.id) || user
+                              setManagingPositionsUser(updatedUser)
+                              setShowPositionsDialog(true)
+                            }}
+                            className="w-full px-4 py-2 text-left text-sm text-gray-700 hover:bg-gray-50 flex items-center space-x-2"
+                          >
+                            <Briefcase className="h-4 w-4" />
+                            <span>Positionen verwalten</span>
                           </button>
                           
                           <button
@@ -678,6 +932,34 @@ export default function UsersPage() {
                 </select>
               </div>
               
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-2">Stundenlohn (€/h)</label>
+                <input
+                  type="number"
+                  step="0.01"
+                  min="0"
+                  value={editFormData.hourly_rate}
+                  onChange={(e) => setEditFormData({ ...editFormData, hourly_rate: e.target.value })}
+                  placeholder="z.B. 15,50"
+                  className="w-full px-4 py-3 border border-gray-200 rounded-xl focus:ring-2 focus:ring-gray-900 focus:border-transparent transition-all duration-200 text-sm"
+                />
+              </div>
+              
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-2">Lohnart</label>
+                <select
+                  value={editFormData.employment_type || ''}
+                  onChange={(e) => setEditFormData({ ...editFormData, employment_type: e.target.value as 'mini' | 'teilzeit' | 'vollzeit' | 'werkstudent' | '' })}
+                  className="w-full px-4 py-3 border border-gray-200 rounded-xl focus:ring-2 focus:ring-gray-900 focus:border-transparent transition-all duration-200 text-sm"
+                >
+                  <option value="">Nicht festgelegt</option>
+                  <option value="mini">Mini (Minijob)</option>
+                  <option value="teilzeit">Teilzeit</option>
+                  <option value="vollzeit">Vollzeit</option>
+                  <option value="werkstudent">Werkstudent</option>
+                </select>
+              </div>
+              
               <div className="flex space-x-3 pt-4">
                 <button
                   type="button"
@@ -769,6 +1051,191 @@ export default function UsersPage() {
                   className="flex-1 bg-blue-600 text-white px-4 py-3 rounded-xl font-medium hover:bg-blue-700 transition-colors disabled:bg-gray-300 disabled:cursor-not-allowed"
                 >
                   Reset Password
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Manage Positions Modal */}
+      {showPositionsDialog && managingPositionsUser && (
+        <div 
+          className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50 backdrop-blur-sm"
+          onClick={() => {
+            setShowPositionsDialog(false)
+            setManagingPositionsUser(null)
+          }}
+        >
+          <div 
+            className="bg-white rounded-2xl shadow-2xl w-full max-w-lg max-h-[90vh] overflow-hidden flex flex-col"
+            onClick={(e) => e.stopPropagation()}
+          >
+            {/* Header */}
+            <div className="px-6 py-5 border-b border-gray-200 bg-gradient-to-r from-gray-50 to-white">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center space-x-3">
+                  <div className="w-12 h-12 bg-gradient-to-br from-blue-500 to-blue-600 rounded-xl flex items-center justify-center">
+                    <Briefcase className="h-6 w-6 text-white" />
+                  </div>
+                  <div>
+                    <h3 className="text-xl font-bold text-gray-900">Positionen verwalten</h3>
+                    <p className="text-sm text-gray-600 mt-0.5">{managingPositionsUser.name}</p>
+                  </div>
+                </div>
+                <button
+                  onClick={() => {
+                    setShowPositionsDialog(false)
+                    setManagingPositionsUser(null)
+                  }}
+                  className="p-2 text-gray-400 hover:text-gray-600 hover:bg-gray-100 rounded-lg transition-colors"
+                >
+                  <X className="h-5 w-5" />
+                </button>
+              </div>
+            </div>
+            
+            {/* Content */}
+            <div className="flex-1 overflow-y-auto p-6">
+              {/* Current Positions */}
+              <div className="mb-8">
+                <h4 className="text-sm font-semibold text-gray-900 mb-4 flex items-center space-x-2">
+                  <span className="w-1.5 h-1.5 bg-blue-500 rounded-full"></span>
+                  <span>Aktuelle Positionen</span>
+                  {managingPositionsUser.positions && managingPositionsUser.positions.length > 0 && (
+                    <span className="ml-2 px-2 py-0.5 bg-blue-100 text-blue-700 rounded-full text-xs font-medium">
+                      {managingPositionsUser.positions.length}
+                    </span>
+                  )}
+                </h4>
+                {managingPositionsUser.positions && managingPositionsUser.positions.length > 0 ? (
+                  <div className="space-y-2">
+                    {managingPositionsUser.positions.map((position) => (
+                      <div
+                        key={position.id}
+                        className="group relative px-4 py-3 rounded-xl border-2 transition-all duration-200"
+                        style={{ 
+                          borderColor: position.color || '#e5e7eb',
+                          backgroundColor: `${position.color || '#6b7280'}15`
+                        }}
+                      >
+                        <div className="flex items-center justify-between">
+                          <div className="flex items-center space-x-3 flex-1">
+                            <div
+                              className="w-10 h-10 rounded-xl flex items-center justify-center text-white font-bold text-sm flex-shrink-0 shadow-lg"
+                              style={{ backgroundColor: position.color || '#6b7280' }}
+                            >
+                              {position.name.charAt(0).toUpperCase()}
+                            </div>
+                            <div className="flex-1 min-w-0">
+                              <div className="text-sm font-semibold text-gray-900">{position.name}</div>
+                              {position.description && (
+                                <div className="text-xs text-gray-600 mt-0.5 truncate">{position.description}</div>
+                              )}
+                            </div>
+                          </div>
+                          <button
+                            onClick={() => handleRemovePosition(managingPositionsUser.id, position.id)}
+                            disabled={isRemovingPosition === position.id}
+                            className="ml-3 p-1.5 text-gray-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-all duration-200 opacity-0 group-hover:opacity-100 disabled:opacity-50 disabled:cursor-not-allowed"
+                            title="Position entfernen"
+                          >
+                            {isRemovingPosition === position.id ? (
+                              <Loader2 className="h-4 w-4 animate-spin" />
+                            ) : (
+                              <X className="h-4 w-4" />
+                            )}
+                          </button>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                ) : (
+                  <div className="text-center py-8 px-4 bg-gray-50 rounded-xl border-2 border-dashed border-gray-300">
+                    <Briefcase className="h-8 w-8 text-gray-400 mx-auto mb-2" />
+                    <p className="text-sm font-medium text-gray-500">Keine Positionen zugewiesen</p>
+                    <p className="text-xs text-gray-400 mt-1">Wähle Positionen aus der Liste unten aus</p>
+                  </div>
+                )}
+              </div>
+
+              {/* Available Positions */}
+              <div>
+                <h4 className="text-sm font-semibold text-gray-900 mb-4 flex items-center space-x-2">
+                  <span className="w-1.5 h-1.5 bg-green-500 rounded-full"></span>
+                  <span>Verfügbare Positionen</span>
+                </h4>
+                {positions.filter(p => 
+                  p.is_active && 
+                  !managingPositionsUser.positions?.some(up => up.id === p.id)
+                ).length > 0 ? (
+                  <div className="space-y-2">
+                    {positions
+                      .filter(p => 
+                        p.is_active && 
+                        !managingPositionsUser.positions?.some(up => up.id === p.id)
+                      )
+                      .map((position) => (
+                        <button
+                          key={position.id}
+                          onClick={() => handleAssignPosition(managingPositionsUser.id, position.id)}
+                          disabled={isAssigningPosition}
+                          className="w-full text-left px-4 py-3 border-2 border-gray-200 rounded-xl hover:border-gray-300 hover:bg-gray-50 transition-all duration-200 flex items-center space-x-3 group disabled:opacity-50 disabled:cursor-not-allowed"
+                        >
+                          <div
+                            className="w-10 h-10 rounded-xl flex items-center justify-center text-white font-bold text-sm flex-shrink-0 shadow-md transition-transform group-hover:scale-110"
+                            style={{ backgroundColor: position.color || '#6b7280' }}
+                          >
+                            {position.name.charAt(0).toUpperCase()}
+                          </div>
+                          <div className="flex-1 min-w-0">
+                            <div className="text-sm font-semibold text-gray-900">{position.name}</div>
+                            {position.description && (
+                              <div className="text-xs text-gray-600 mt-0.5 line-clamp-2">{position.description}</div>
+                            )}
+                          </div>
+                          <div className="flex-shrink-0">
+                            <div className="w-8 h-8 rounded-lg bg-gray-100 group-hover:bg-green-100 flex items-center justify-center transition-colors">
+                              {isAssigningPosition ? (
+                                <Loader2 className="h-5 w-5 text-gray-400 animate-spin" />
+                              ) : (
+                                <Plus className="h-5 w-5 text-gray-400 group-hover:text-green-600 transition-colors" />
+                              )}
+                            </div>
+                          </div>
+                        </button>
+                      ))}
+                  </div>
+                ) : (
+                  <div className="text-center py-8 px-4 bg-gray-50 rounded-xl border-2 border-dashed border-gray-300">
+                    <Check className="h-8 w-8 text-gray-400 mx-auto mb-2" />
+                    <p className="text-sm font-medium text-gray-500">Alle Positionen zugewiesen</p>
+                    <p className="text-xs text-gray-400 mt-1">Dieser Mitarbeiter hat bereits alle verfügbaren Positionen</p>
+                  </div>
+                )}
+              </div>
+            </div>
+
+            {/* Footer */}
+            <div className="px-6 py-4 border-t border-gray-200 bg-gray-50">
+              <div className="flex space-x-3">
+                <button
+                  onClick={() => {
+                    setShowPositionsDialog(false)
+                    setManagingPositionsUser(null)
+                  }}
+                  className="flex-1 px-4 py-3 border border-gray-300 text-gray-700 rounded-xl font-semibold hover:bg-gray-100 transition-colors"
+                >
+                  Abbrechen
+                </button>
+                <button
+                  onClick={() => {
+                    setShowPositionsDialog(false)
+                    setManagingPositionsUser(null)
+                  }}
+                  className="flex-1 px-4 py-3 bg-gray-900 text-white rounded-xl font-semibold hover:bg-gray-800 transition-colors shadow-sm"
+                >
+                  Fertig
                 </button>
               </div>
             </div>

@@ -48,8 +48,9 @@ export async function GET(request: NextRequest) {
 
     // Check if user has permission (owner or manager)
     if (userData.role !== 'owner' && userData.role !== 'manager') {
+      console.error('Permission denied for user:', user.id, 'Role:', userData.role)
       return NextResponse.json(
-        { error: { message: 'Insufficient permissions' } },
+        { error: { message: `Insufficient permissions. User role: ${userData.role}. Required: owner or manager` } },
         { status: 403 }
       )
     }
@@ -71,7 +72,8 @@ export async function GET(request: NextRequest) {
       )
     }
 
-    return NextResponse.json(revenueData || [])
+    // Return in the format expected by the frontend
+    return NextResponse.json({ revenueData: revenueData || [] })
   } catch (error) {
     console.error('Revenue fetch error:', error)
     return NextResponse.json(

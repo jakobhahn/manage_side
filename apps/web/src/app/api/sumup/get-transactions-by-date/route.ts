@@ -441,7 +441,7 @@ export async function POST(request: NextRequest) {
             
             console.log(`🔍 Client-side filtering: ${allTransactions.length} total → ${filteredTransactions.length} matching date ${date}`)
 
-            // Save filtered transactions to database
+            // Save filtered transactions to database with raw_data
             const { error: insertError } = await supabase
               .from('payment_transactions')
               .insert(
@@ -451,7 +451,8 @@ export async function POST(request: NextRequest) {
                   currency: transaction.currency || 'EUR',
                   status: transaction.status || 'completed',
                   merchant_code: merchantCode,
-                  transaction_date: transaction.timestamp || transaction.created_at || transaction.date
+                  transaction_date: transaction.timestamp || transaction.created_at || transaction.date,
+                  raw_data: transaction // Store full transaction data including tip
                 }))
               )
 
@@ -461,14 +462,23 @@ export async function POST(request: NextRequest) {
               console.log(`✅ Saved ${filteredTransactions.length} transactions to database`)
             }
 
+            // Enrich transactions with tip information for response
+            const enrichedTransactions = filteredTransactions.map((transaction: any) => ({
+              ...transaction,
+              // Ensure tip is accessible at top level
+              tip: transaction.tip || transaction.tip_amount || null,
+              tip_amount: transaction.tip_amount || transaction.tip || null,
+              raw_data: transaction // Include full raw data in response
+            }))
+
             return NextResponse.json({
               success: true,
-              transactions: filteredTransactions,
-              count: filteredTransactions.length,
+              transactions: enrichedTransactions,
+              count: enrichedTransactions.length,
               totalFetched: allTransactions.length,
               endpoint: endpoint,
               date: date,
-              message: `Successfully fetched ${filteredTransactions.length} transactions for ${date} (from ${allTransactions.length} total)${hasMorePages ? ' (with pagination)' : ''}`
+              message: `Successfully fetched ${enrichedTransactions.length} transactions for ${date} (from ${allTransactions.length} total)${hasMorePages ? ' (with pagination)' : ''}`
             })
           } else {
             console.log('No transactions found in response')

@@ -68,7 +68,7 @@ async function fetchUserOrganization(supabase: any, supabaseAdmin: any, user: an
         // Use the newly created profile
         const { data: organization, error: orgError } = await supabaseAdmin
           .from('organizations')
-          .select('id, name, slug, created_at')
+          .select('id, name, slug, address, created_at')
           .eq('id', organizationId)
           .single()
 
@@ -95,7 +95,7 @@ async function fetchUserOrganization(supabase: any, supabaseAdmin: any, user: an
     // Get the organization details separately
     const { data: organization, error: orgError } = await supabaseAdmin
       .from('organizations')
-      .select('id, name, slug, created_at')
+      .select('id, name, slug, address, created_at')
       .eq('id', userProfile.organization_id)
       .single()
 
@@ -202,7 +202,7 @@ export async function PATCH(request: Request) {
     }
 
     const token = authHeader.split(' ')[1]
-    const { name, slug } = await request.json()
+    const { name, slug, address } = await request.json()
 
     if (!name || !slug) {
       return NextResponse.json(
@@ -266,12 +266,20 @@ export async function PATCH(request: Request) {
     }
 
     // Update organization
+    const updateData: any = {
+      name,
+      slug,
+      updated_at: new Date().toISOString()
+    }
+    
+    // Only include address if it's provided
+    if (address !== undefined) {
+      updateData.address = address
+    }
+
     const { data: updatedOrg, error: updateError } = await supabase
       .from('organizations')
-      .update({
-        name,
-        slug
-      })
+      .update(updateData)
       .eq('id', userProfile.organization_id)
       .select()
       .single()

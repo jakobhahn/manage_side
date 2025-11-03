@@ -17,7 +17,11 @@ import {
   Copy,
   Check,
   LogOut,
-  Plus
+  Plus,
+  Trash2,
+  X,
+  Power,
+  PowerOff
 } from 'lucide-react'
 import { Label } from '@/components/ui/label'
 import { Input } from '@/components/ui/input'
@@ -26,7 +30,7 @@ import { Button } from '@/components/ui/button'
 interface MerchantCode {
   id: string
   merchant_code: string
-  description: string
+  description?: string
   is_active: boolean
   created_at: string
   organization_id: string
@@ -94,6 +98,13 @@ export default function SumUpPage() {
   const [editingMerchant, setEditingMerchant] = useState<MerchantCode | null>(null)
   const [autoRefreshEnabled, setAutoRefreshEnabled] = useState(true)
   const [refreshingTokens, setRefreshingTokens] = useState<Set<string>>(new Set())
+  const [deletingMerchant, setDeletingMerchant] = useState<MerchantCode | null>(null)
+  const [showDeleteDialog, setShowDeleteDialog] = useState(false)
+  const [deleteTransactionsOption, setDeleteTransactionsOption] = useState(false)
+  const [isDeleting, setIsDeleting] = useState(false)
+  const [togglingMerchants, setTogglingMerchants] = useState<Set<string>>(new Set())
+  const [editedDescription, setEditedDescription] = useState('')
+  const [isUpdating, setIsUpdating] = useState(false)
   const supabase = createClient(
     process.env.NEXT_PUBLIC_SUPABASE_URL!,
     process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
@@ -638,6 +649,157 @@ export default function SumUpPage() {
     }
   }
 
+  const handleDeleteMerchant = (merchant: MerchantCode) => {
+    setDeletingMerchant(merchant)
+    setShowDeleteDialog(true)
+    setDeleteTransactionsOption(false)
+  }
+
+  const handleToggleMerchant = async (merchant: MerchantCode) => {
+    const merchantId = merchant.id
+    setTogglingMerchants(prev => new Set(prev).add(merchantId))
+    setError(null)
+
+    try {
+      const { data: { session } } = await supabase.auth.getSession()
+      
+      if (!session) {
+        throw new Error('No active session')
+      }
+
+      const response = await fetch('/api/merchant-codes/toggle', {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${session.access_token}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          merchantCodeId: merchantId,
+          activate: !merchant.is_active
+        }),
+      })
+
+      const data = await response.json()
+
+      if (!response.ok) {
+        throw new Error(data.error?.message || `HTTP ${response.status}: ${response.statusText}`)
+      }
+
+      // Set success message with appropriate styling based on action
+      if (!merchant.is_active) {
+        // Was deactivated, now activated - green message
+        setSuccess(data.message)
+      } else {
+        // Was activated, now deactivated - red message (handled in UI)
+        setSuccess(`DEACTIVATED:${data.message}`)
+      }
+      await fetchMerchantCodes()
+
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to toggle merchant account status')
+    } finally {
+      setTogglingMerchants(prev => {
+        const newSet = new Set(prev)
+        newSet.delete(merchantId)
+        return newSet
+      })
+    }
+  }
+
+  const handleUpdateDescription = async () => {
+    if (!editingMerchant || editedDescription.trim() === '') {
+      setError('Beschreibung darf nicht leer sein')
+      return
+    }
+
+    setIsUpdating(true)
+    setError(null)
+
+    try {
+      const { data: { session } } = await supabase.auth.getSession()
+      
+      if (!session) {
+        throw new Error('No active session')
+      }
+
+      const response = await fetch('/api/merchant-codes/update', {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${session.access_token}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          merchantCodeId: editingMerchant.id,
+          description: editedDescription.trim()
+        }),
+      })
+
+      const data = await response.json()
+
+      if (!response.ok) {
+        throw new Error(data.error?.message || `HTTP ${response.status}: ${response.statusText}`)
+      }
+
+      setSuccess(data.message)
+      await fetchMerchantCodes()
+      
+      // Close modal
+      setEditingMerchant(null)
+      setEditedDescription('')
+
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to update merchant description')
+    } finally {
+      setIsUpdating(false)
+    }
+  }
+
+  const confirmDeletion = async () => {
+    if (!deletingMerchant) return
+
+    setIsDeleting(true)
+    setError(null)
+
+    try {
+      const { data: { session } } = await supabase.auth.getSession()
+      
+      if (!session) {
+        throw new Error('No active session')
+      }
+
+      const response = await fetch('/api/merchant-codes/delete', {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${session.access_token}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          merchantCodeId: deletingMerchant.id,
+          deleteTransactions: deleteTransactionsOption
+        }),
+      })
+
+      const data = await response.json()
+
+      if (!response.ok) {
+        throw new Error(data.error?.message || `HTTP ${response.status}: ${response.statusText}`)
+      }
+
+      setSuccess(data.message)
+      await fetchMerchantCodes()
+      
+      // Close dialog
+      setShowDeleteDialog(false)
+      setDeletingMerchant(null)
+      setDeleteTransactionsOption(false)
+
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to delete merchant account')
+    } finally {
+      setIsDeleting(false)
+    }
+  }
+
   if (isLoading) {
     return (
       <div className="min-h-screen bg-gray-50 flex items-center justify-center">
@@ -775,10 +937,24 @@ export default function SumUpPage() {
         )}
 
         {success && (
-          <div className="mb-6 bg-green-50 border border-green-200 rounded-xl p-4">
+          <div className={`mb-6 rounded-xl p-4 ${
+            success.startsWith('DEACTIVATED:') 
+              ? 'bg-red-50 border border-red-200' 
+              : 'bg-green-50 border border-green-200'
+          }`}>
             <div className="flex items-center space-x-2">
-              <CheckCircle className="h-4 w-4 text-green-600" />
-              <p className="text-green-800 text-sm">{success}</p>
+              {success.startsWith('DEACTIVATED:') ? (
+                <AlertCircle className="h-4 w-4 text-red-600" />
+              ) : (
+                <CheckCircle className="h-4 w-4 text-green-600" />
+              )}
+              <p className={`text-sm ${
+                success.startsWith('DEACTIVATED:') 
+                  ? 'text-red-800' 
+                  : 'text-green-800'
+              }`}>
+                {success.startsWith('DEACTIVATED:') ? success.replace('DEACTIVATED:', '') : success}
+              </p>
             </div>
           </div>
         )}
@@ -1036,17 +1212,9 @@ export default function SumUpPage() {
                         <div className="flex items-center space-x-3">
                           <h3 className="text-sm font-medium text-gray-900">{merchant.merchant_code}</h3>
                           <span className={`inline-flex items-center px-2 py-1 rounded-full text-xs font-medium ${
-                            merchant.is_active ? 'bg-green-100 text-green-700' : 'bg-gray-100 text-gray-700'
+                            merchant.is_active ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'
                           }`}>
-                            {merchant.is_active ? 'Active' : 'Inactive'}
-                          </span>
-                          <span className={`inline-flex items-center px-2 py-1 rounded-full text-xs font-medium ${
-                            merchant.sync_status === 'active' ? 'bg-green-100 text-green-700' :
-                            merchant.sync_status === 'error' ? 'bg-red-100 text-red-700' :
-                            merchant.sync_status === 'syncing' ? 'bg-yellow-100 text-yellow-700' :
-                            'bg-gray-100 text-gray-700'
-                          }`}>
-                            {merchant.sync_status}
+                            {merchant.is_active ? 'Aktiv' : 'Deaktiviert'}
                           </span>
                           {merchant.integration_type === 'oauth' && (
                             <span className={`inline-flex items-center px-2 py-1 rounded-full text-xs font-medium ${getStatusColor(getOAuthStatus(merchant).status)}`}>
@@ -1054,7 +1222,7 @@ export default function SumUpPage() {
                             </span>
                           )}
                         </div>
-                        <p className="text-sm text-gray-500 mt-1">{merchant.description}</p>
+                        <p className="text-sm text-gray-500 mt-1">{merchant.description || merchant.merchant_code}</p>
                         <div className="flex items-center space-x-2 mt-1">
                           <span className="text-xs text-gray-500">Created: {formatDate(merchant.created_at)}</span>
                           {merchant.last_sync_at && (
@@ -1122,10 +1290,41 @@ export default function SumUpPage() {
                       </div>
                       
                       <button 
-                        onClick={() => setEditingMerchant(merchant)}
+                        onClick={() => {
+                          setEditingMerchant(merchant)
+                          setEditedDescription(merchant.description || merchant.merchant_code || '')
+                        }}
                         className="p-2 text-gray-400 hover:text-gray-600 transition-colors"
+                        title="Einstellungen"
                       >
                         <Settings className="h-4 w-4" />
+                      </button>
+                      
+                      <button 
+                        onClick={() => handleToggleMerchant(merchant)}
+                        disabled={togglingMerchants.has(merchant.id)}
+                        className={`p-2 transition-colors ${
+                          merchant.is_active 
+                            ? 'text-orange-400 hover:text-orange-600' 
+                            : 'text-green-400 hover:text-green-600'
+                        }`}
+                        title={merchant.is_active ? 'Deaktivieren' : 'Aktivieren'}
+                      >
+                        {togglingMerchants.has(merchant.id) ? (
+                          <Loader2 className="h-4 w-4 animate-spin" />
+                        ) : merchant.is_active ? (
+                          <PowerOff className="h-4 w-4" />
+                        ) : (
+                          <Power className="h-4 w-4" />
+                        )}
+                      </button>
+                      
+                      <button 
+                        onClick={() => handleDeleteMerchant(merchant)}
+                        className="p-2 text-red-400 hover:text-red-600 transition-colors"
+                        title="Löschen"
+                      >
+                        <Trash2 className="h-4 w-4" />
                       </button>
                     </div>
                   </div>
@@ -1227,40 +1426,89 @@ export default function SumUpPage() {
                   </div>
                   
                   <div className="space-y-3">
-                    {dateTransactions.map((transaction, index) => (
-                      <div key={transaction.id || index} className="bg-gray-50 rounded-xl p-4">
-                        <h4 className="font-medium text-gray-900 mb-3">Transaction #{index + 1}</h4>
-                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4 text-sm">
-                          <div>
-                            <span className="font-medium text-gray-700">ID:</span>
-                            <span className="ml-2 text-gray-900">{transaction.id || transaction.transaction_id || 'N/A'}</span>
-                          </div>
-                          <div>
-                            <span className="font-medium text-gray-700">Amount:</span>
-                            <span className="ml-2 text-gray-900">
-                              {transaction.amount || transaction.total_amount || 'N/A'} {transaction.currency || 'EUR'}
-                            </span>
-                          </div>
-                          <div>
-                            <span className="font-medium text-gray-700">Status:</span>
-                            <span className="ml-2 text-gray-900">{transaction.status || 'N/A'}</span>
-                          </div>
-                          <div>
-                            <span className="font-medium text-gray-700">Payment Type:</span>
-                            <span className="ml-2 text-gray-900">{transaction.payment_type || 'N/A'}</span>
-                          </div>
-                          <div className="md:col-span-2">
-                            <span className="font-medium text-gray-700">Timestamp:</span>
-                            <span className="ml-2 text-gray-900">
-                              {transaction.timestamp || transaction.created_at || transaction.date ? 
-                                new Date(transaction.timestamp || transaction.created_at || transaction.date).toLocaleString('de-DE') : 
-                                'N/A'
-                              }
-                            </span>
+                    {dateTransactions.map((transaction, index) => {
+                      // Extract tip from various possible locations (check multiple places)
+                      let tip: any = null
+                      
+                      // Check direct properties first
+                      if (transaction.tip) tip = transaction.tip
+                      else if (transaction.tip_amount) tip = transaction.tip_amount
+                      // Check raw_data object
+                      else if (transaction.raw_data) {
+                        if (typeof transaction.raw_data === 'object') {
+                          tip = transaction.raw_data.tip || 
+                                 transaction.raw_data.tip_amount ||
+                                 transaction.raw_data.tips?.amount ||
+                                 null
+                        }
+                      }
+                      // Check sumup_data
+                      else if (transaction.sumup_data) {
+                        if (typeof transaction.sumup_data === 'object') {
+                          tip = transaction.sumup_data.tip || 
+                                 transaction.sumup_data.tip_amount ||
+                                 transaction.sumup_data.tips?.amount ||
+                                 null
+                        }
+                      }
+                      
+                      // Convert tip to number if it's a string
+                      const tipAmount = tip !== null ? (typeof tip === 'number' ? tip : parseFloat(String(tip)) || 0) : null
+                      
+                      // Debug log to see what we have
+                      console.log('Transaction data for', transaction.id || index, ':', {
+                        hasTip: !!transaction.tip,
+                        hasTipAmount: !!transaction.tip_amount,
+                        hasRawData: !!transaction.raw_data,
+                        rawDataKeys: transaction.raw_data ? Object.keys(transaction.raw_data) : [],
+                        tip,
+                        tipAmount,
+                        fullTransaction: transaction
+                      })
+                      
+                      return (
+                        <div key={transaction.id || index} className="bg-gray-50 rounded-xl p-4">
+                          <h4 className="font-medium text-gray-900 mb-3">Transaction #{index + 1}</h4>
+                          <div className="grid grid-cols-1 md:grid-cols-2 gap-4 text-sm">
+                            <div>
+                              <span className="font-medium text-gray-700">ID:</span>
+                              <span className="ml-2 text-gray-900">{transaction.id || transaction.transaction_id || 'N/A'}</span>
+                            </div>
+                            <div>
+                              <span className="font-medium text-gray-700">Amount:</span>
+                              <span className="ml-2 text-gray-900">
+                                {transaction.amount || transaction.total_amount || 'N/A'} {transaction.currency || 'EUR'}
+                              </span>
+                            </div>
+                            {(tipAmount !== null && tipAmount > 0) && (
+                              <div>
+                                <span className="font-medium text-gray-700">Tip:</span>
+                                <span className="ml-2 text-gray-900 font-semibold text-green-600">
+                                  €{tipAmount.toFixed(2)}
+                                </span>
+                              </div>
+                            )}
+                            <div>
+                              <span className="font-medium text-gray-700">Status:</span>
+                              <span className="ml-2 text-gray-900">{transaction.status || 'N/A'}</span>
+                            </div>
+                            <div>
+                              <span className="font-medium text-gray-700">Payment Type:</span>
+                              <span className="ml-2 text-gray-900">{transaction.payment_type || 'N/A'}</span>
+                            </div>
+                            <div className="md:col-span-2">
+                              <span className="font-medium text-gray-700">Timestamp:</span>
+                              <span className="ml-2 text-gray-900">
+                                {transaction.timestamp || transaction.created_at || transaction.date ? 
+                                  new Date(transaction.timestamp || transaction.created_at || transaction.date).toLocaleString('de-DE') : 
+                                  'N/A'
+                                }
+                              </span>
+                            </div>
                           </div>
                         </div>
-                      </div>
-                    ))}
+                      )
+                    })}
                   </div>
                 </div>
               ) : null}
@@ -1321,9 +1569,10 @@ export default function SumUpPage() {
                 <Label htmlFor="edit-description">Beschreibung</Label>
                 <Input
                   id="edit-description"
-                  value={editingMerchant?.description || ''}
-                  disabled
-                  className="bg-gray-50"
+                  value={editedDescription}
+                  onChange={(e) => setEditedDescription(e.target.value)}
+                  placeholder="Beschreibung eingeben..."
+                  className="focus:ring-2 focus:ring-blue-500"
                 />
               </div>
               
@@ -1344,51 +1593,173 @@ export default function SumUpPage() {
                   </div>
                   
                   <div className="space-y-2">
-                    <button 
-                      onClick={() => {
-                        if (editingMerchant) {
-                          handleSumUpAuth(editingMerchant)
-                          setEditingMerchant(null)
-                        }
-                      }}
-                      className="w-full bg-blue-600 text-white px-4 py-2 rounded-xl hover:bg-blue-700 transition-colors flex items-center justify-center space-x-2"
-                    >
-                      <Key className="h-4 w-4" />
-                      <span>Connect to SumUp</span>
-                    </button>
-                    
-                    {/* Manual Token Refresh Button in Modal */}
-                    {editingMerchant && (getOAuthStatus(editingMerchant).status === 'expired_but_refreshable' || 
-                      getOAuthStatus(editingMerchant).status === 'expiring_soon' ||
-                      getOAuthStatus(editingMerchant).status === 'connected') && (
+                    <div className="space-y-2">
                       <button 
                         onClick={() => {
                           if (editingMerchant) {
-                            refreshOAuthToken(editingMerchant.merchant_code)
+                            handleSumUpAuth(editingMerchant)
                           }
                         }}
-                        disabled={editingMerchant ? refreshingTokens.has(editingMerchant.merchant_code) : false}
-                        className="w-full bg-orange-600 text-white px-4 py-2 rounded-xl hover:bg-orange-700 transition-colors flex items-center justify-center space-x-2 disabled:opacity-50"
+                        className="w-full bg-blue-600 text-white px-4 py-2 rounded-xl hover:bg-blue-700 transition-colors flex items-center justify-center space-x-2"
+                        disabled={isUpdating}
                       >
-                        {editingMerchant && refreshingTokens.has(editingMerchant.merchant_code) ? (
-                          <Loader2 className="h-4 w-4 animate-spin" />
-                        ) : (
-                          <RefreshCw className="h-4 w-4" />
-                        )}
-                        <span>Refresh Token</span>
+                        <Key className="h-4 w-4" />
+                        <span>Connect to SumUp</span>
                       </button>
-                    )}
+                      
+                      {/* Manual Token Refresh Button in Modal */}
+                      {editingMerchant && (getOAuthStatus(editingMerchant).status === 'expired_but_refreshable' || 
+                        getOAuthStatus(editingMerchant).status === 'expiring_soon' ||
+                        getOAuthStatus(editingMerchant).status === 'connected') && (
+                        <button 
+                          onClick={() => {
+                            if (editingMerchant) {
+                              refreshOAuthToken(editingMerchant.merchant_code)
+                            }
+                          }}
+                          disabled={editingMerchant ? refreshingTokens.has(editingMerchant.merchant_code) || isUpdating : false}
+                          className="w-full bg-orange-600 text-white px-4 py-2 rounded-xl hover:bg-orange-700 transition-colors flex items-center justify-center space-x-2 disabled:opacity-50"
+                        >
+                          {editingMerchant && refreshingTokens.has(editingMerchant.merchant_code) ? (
+                            <Loader2 className="h-4 w-4 animate-spin" />
+                          ) : (
+                            <RefreshCw className="h-4 w-4" />
+                          )}
+                          <span>Refresh Token</span>
+                        </button>
+                      )}
+                    </div>
                   </div>
                 </div>
               )}
               
               <div className="flex space-x-3 pt-4">
                 <Button
-                  onClick={() => setEditingMerchant(null)}
+                  onClick={() => {
+                    setEditingMerchant(null)
+                    setEditedDescription('')
+                  }}
                   variant="outline"
                   className="flex-1"
+                  disabled={isUpdating}
                 >
-                  Schließen
+                  Abbrechen
+                </Button>
+                <Button
+                  onClick={handleUpdateDescription}
+                  className="flex-1"
+                  disabled={isUpdating || editedDescription.trim() === ''}
+                >
+                  {isUpdating ? (
+                    <>
+                      <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                      Speichere...
+                    </>
+                  ) : (
+                    'Speichern'
+                  )}
+                </Button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Delete Merchant Dialog */}
+      {showDeleteDialog && deletingMerchant && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+          <div className="bg-white rounded-2xl p-6 w-full max-w-md mx-4">
+            <div className="flex items-center justify-between mb-4">
+              <h3 className="text-lg font-semibold text-gray-900">Merchant Account löschen</h3>
+              <button
+                onClick={() => {
+                  setShowDeleteDialog(false)
+                  setDeletingMerchant(null)
+                  setDeleteTransactionsOption(false)
+                }}
+                className="text-gray-400 hover:text-gray-600"
+              >
+                <X className="h-5 w-5" />
+              </button>
+            </div>
+            
+            <div className="space-y-4">
+              <div className="p-4 bg-red-50 border border-red-200 rounded-lg">
+                <div className="flex items-start space-x-3">
+                  <AlertCircle className="h-5 w-5 text-red-600 mt-0.5" />
+                  <div>
+                    <h4 className="font-medium text-red-900 mb-1">Achtung!</h4>
+                    <p className="text-sm text-red-700">
+                      Sie sind dabei, den Merchant Account <strong>{deletingMerchant.merchant_code}</strong> unwiderruflich zu löschen.
+                      Diese Aktion kann nicht rückgängig gemacht werden!
+                    </p>
+                  </div>
+                </div>
+              </div>
+
+              <div className="space-y-3">
+                <div className="flex items-start space-x-3">
+                  <input
+                    type="checkbox"
+                    id="deleteTransactions"
+                    checked={deleteTransactionsOption}
+                    onChange={(e) => setDeleteTransactionsOption(e.target.checked)}
+                    className="mt-1 h-4 w-4 text-red-600 focus:ring-red-500 border-gray-300 rounded"
+                  />
+                  <div>
+                    <label htmlFor="deleteTransactions" className="text-sm font-medium text-gray-900 cursor-pointer">
+                      Alle zugehörigen Transaktionen löschen
+                    </label>
+                    <p className="text-xs text-gray-500 mt-1">
+                      Wenn aktiviert, werden alle Transaktionen dieses Merchant Accounts unwiderruflich aus der Datenbank gelöscht.
+                      (Hinweis: Sie können Merchant Accounts auch nur deaktivieren, ohne sie zu löschen)
+                    </p>
+                  </div>
+                </div>
+
+                {deleteTransactionsOption && (
+                  <div className="p-3 bg-yellow-50 border border-yellow-200 rounded-lg">
+                    <div className="flex items-start space-x-2">
+                      <AlertCircle className="h-4 w-4 text-yellow-600 mt-0.5" />
+                      <p className="text-xs text-yellow-800">
+                        <strong>Warnung:</strong> Das Löschen der Transaktionen kann nicht rückgängig gemacht werden!
+                        Alle Analytics-Daten und Berichte werden dadurch beeinflusst.
+                      </p>
+                    </div>
+                  </div>
+                )}
+              </div>
+              
+              <div className="flex space-x-3 pt-4">
+                <Button
+                  onClick={() => {
+                    setShowDeleteDialog(false)
+                    setDeletingMerchant(null)
+                    setDeleteTransactionsOption(false)
+                  }}
+                  variant="outline"
+                  className="flex-1"
+                  disabled={isDeleting}
+                >
+                  Abbrechen
+                </Button>
+                <Button
+                  onClick={confirmDeletion}
+                  variant="destructive"
+                  className="flex-1"
+                  disabled={isDeleting}
+                >
+                  {isDeleting ? (
+                    <>
+                      <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                      Lösche...
+                    </>
+                  ) : (
+                    <>
+                      <Trash2 className="mr-2 h-4 w-4" />
+                      Löschen
+                    </>
+                  )}
                 </Button>
               </div>
             </div>

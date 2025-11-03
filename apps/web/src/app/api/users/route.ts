@@ -44,18 +44,19 @@ export async function GET(request: NextRequest) {
       )
     }
 
-    // Check if user has permission to view users (owner or manager)
-    if (!['owner', 'manager'].includes(userData.role)) {
-      return NextResponse.json(
-        { error: { message: 'Insufficient permissions' } },
-        { status: 403 }
-      )
-    }
-
-    // Fetch all users in the organization
+    // Fetch all users in the organization with position information
+    // All users (including staff) can view other users in their organization
+    // Note: Staff can only view, not modify or create users
     const { data: users, error: usersError } = await supabase
       .from('users')
-      .select('*')
+      .select(`
+        *,
+        position:positions!users_position_id_fkey(
+          id,
+          name,
+          color
+        )
+      `)
       .eq('organization_id', userData.organization_id)
       .order('created_at', { ascending: false })
 
