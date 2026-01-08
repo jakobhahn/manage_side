@@ -1,5 +1,5 @@
 {
-  "buildCommand": "./scripts/migrate-and-build.sh",
+  "buildCommand": "bash scripts/migrate-and-build.sh",
   "outputDirectory": "apps/web/.next",
   "installCommand": "pnpm install",
   "framework": "nextjs",
