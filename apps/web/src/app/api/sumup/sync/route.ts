@@ -50,9 +50,6 @@ async function fetchAllSumUpTransactions(
   // First try the v0.1 endpoint which might have more details
   let initialUrl: string
   if (fromDate && toDate) {
-    // Convert dates to proper ISO format with time
-    const startTime = `${fromDate}T00:00:00Z`
-    const endTime = `${toDate}T23:59:59Z`
     // Try v0.1 endpoint first (might have more fields)
     initialUrl = `https://api.sumup.com/v0.1/me/transactions?start_date=${fromDate}&end_date=${toDate}&limit=1000`
     // Fallback to v2.1 if v0.1 doesn't work
