@@ -31,23 +31,25 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ error: { message: 'User not found' } }, { status: 404 })
     }
 
-    // Build query
+    // Build query - filter by organization_id and user_id (for staff)
     let query = supabase
       .from('time_clock_entries')
       .select(`
         *,
-        user:user_id(id, name, email),
-        shift:shift_id(id, start_time, end_time, position, status),
-        approved_by_user:approved_by(id, name)
+        user:users!time_clock_entries_user_id_fkey(id, name, email),
+        shift:shifts!time_clock_entries_shift_id_fkey(id, start_time, end_time, position, status),
+        approved_by_user:users!time_clock_entries_approved_by_fkey(id, name)
       `)
       .eq('organization_id', userData.organization_id)
-      .order('clock_in', { ascending: false })
-      .limit(100)
 
-    // Staff can only see their own entries
+    // Staff can only see their own entries - filter by user_id
     if (userData.role === 'staff') {
       query = query.eq('user_id', userData.id)
     }
+
+    query = query
+      .order('clock_in', { ascending: false })
+      .limit(100)
 
     const { data: entries, error: entriesError } = await query
 
@@ -56,11 +58,30 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ error: { message: 'Failed to fetch entries' } }, { status: 500 })
     }
 
-    return NextResponse.json({ entries: entries || [] })
+    // Debug: Log the query results to verify filtering
+    console.log('Time clock entries query:', {
+      userId: userData.id,
+      userRole: userData.role,
+      organizationId: userData.organization_id,
+      entriesCount: entries?.length || 0,
+      entryUserIds: entries?.map((e: any) => e.user_id) || []
+    })
+
+    // Double-check: Filter entries by user_id for staff (additional safety check)
+    let filteredEntries = entries || []
+    if (userData.role === 'staff') {
+      filteredEntries = filteredEntries.filter((entry: any) => entry.user_id === userData.id)
+    }
+
+    return NextResponse.json({ entries: filteredEntries })
   } catch (error) {
     console.error('Time clock entries fetch error:', error)
     return NextResponse.json({ error: { message: 'Internal server error' } }, { status: 500 })
   }
 }
+
+
+
+
 
 

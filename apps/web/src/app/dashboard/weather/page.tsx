@@ -7,53 +7,112 @@ import {
   Cloud,
   Sun,
   CloudRain,
-  // CloudSnow,
+  CloudSnow,
   Wind,
   Thermometer,
   Droplets,
-  Clock,
-  MapPin
+  MapPin,
+  Loader2
 } from 'lucide-react'
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
-import { Button } from '@/components/ui/button'
 import Link from 'next/link'
+import { createClient } from '@supabase/supabase-js'
 
-interface WeatherData {
-  date: string
+const supabase = createClient(
+  process.env.NEXT_PUBLIC_SUPABASE_URL!,
+  process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
+)
+
+interface CurrentWeather {
+  temperature: number
+  humidity: number
+  weatherCode: number
+  windSpeed: number
+  precipitation: number
+  time: string
+}
+
+
+interface HourlyData {
+  time: string
   hour: number
   temperature: number
   precipitation: number
-  weather_code: number
-  wind_speed: number
-  humidity: number
-  pressure: number
+  weatherCode: number
+}
+
+interface ForecastDay {
+  date: string
+  temperatureMax: number
+  temperatureMin: number
+  weatherCode: number
+  precipitation: number
+  windSpeed: number
+  sunrise?: string | null
+  sunset?: string | null
 }
 
 export default function WeatherPage() {
-  const [weatherData, setWeatherData] = useState<WeatherData[]>([])
+  const [current, setCurrent] = useState<CurrentWeather | null>(null)
+  const [forecast, setForecast] = useState<ForecastDay[]>([])
+  const [selectedDate, setSelectedDate] = useState<string | null>(null)
+  const [hourlyData, setHourlyData] = useState<HourlyData[]>([])
+  const [sunrise, setSunrise] = useState<string | null>(null)
+  const [sunset, setSunset] = useState<string | null>(null)
+  const [isLoadingHourly, setIsLoadingHourly] = useState(false)
   const [isLoading, setIsLoading] = useState(true)
-  const [isSyncing, setIsSyncing] = useState(false)
   const [error, setError] = useState<string | null>(null)
-  const [lastSync, setLastSync] = useState<string | null>(null)
 
   useEffect(() => {
     fetchWeatherData()
   }, [])
+
+  // Handle ESC key to close modal
+  useEffect(() => {
+    const handleEsc = (event: KeyboardEvent) => {
+      if (event.key === 'Escape' && selectedDate) {
+        setSelectedDate(null)
+        setHourlyData([])
+        setSunrise(null)
+        setSunset(null)
+        setError(null)
+      }
+    }
+
+    window.addEventListener('keydown', handleEsc)
+    return () => window.removeEventListener('keydown', handleEsc)
+  }, [selectedDate])
 
   const fetchWeatherData = async () => {
     try {
       setIsLoading(true)
       setError(null)
       
-      const response = await fetch('/api/weather/sync')
+      // Get session token for authorization
+      const { data: { session } } = await supabase.auth.getSession()
+      const headers: HeadersInit = {
+        'Content-Type': 'application/json',
+      }
+      
+      if (session?.access_token) {
+        headers['Authorization'] = `Bearer ${session.access_token}`
+      }
+      
+      const response = await fetch('/api/weather/current', {
+        headers
+      })
+      
       if (!response.ok) {
         throw new Error('Failed to fetch weather data')
       }
       
       const data = await response.json()
-      console.log('Weather data response:', data)
-      setWeatherData(data.data || [])
-      setLastSync(new Date().toISOString())
+      
+      if (data.error) {
+        throw new Error(data.error)
+      }
+      
+      setCurrent(data.current)
+      setForecast(data.forecast || [])
     } catch (err) {
       console.error('Error fetching weather data:', err)
       setError(err instanceof Error ? err.message : 'Unknown error')
@@ -62,51 +121,155 @@ export default function WeatherPage() {
     }
   }
 
-  const syncWeatherData = async () => {
+  const getWeatherIcon = (weatherCode: number, size: 'small' | 'large' = 'small') => {
+    const iconSize = size === 'large' ? 'h-16 w-16' : 'h-6 w-6'
+    
+    // WMO Weather interpretation codes (WW)
+    if (weatherCode >= 95) return <CloudRain className={`${iconSize} text-purple-600`} /> // Thunderstorm
+    if (weatherCode >= 85) return <CloudSnow className={`${iconSize} text-blue-300`} /> // Heavy snow
+    if (weatherCode >= 71) return <CloudSnow className={`${iconSize} text-gray-300`} /> // Snow
+    if (weatherCode >= 61) return <CloudRain className={`${iconSize} text-blue-600`} /> // Rain
+    if (weatherCode >= 51) return <CloudRain className={`${iconSize} text-blue-400`} /> // Drizzle
+    if (weatherCode >= 45) return <Cloud className={`${iconSize} text-gray-500`} /> // Fog
+    if (weatherCode >= 3) return <Cloud className={`${iconSize} text-gray-400`} /> // Overcast
+    if (weatherCode >= 1) return <Cloud className={`${iconSize} text-gray-300`} /> // Partly cloudy
+    return <Sun className={`${iconSize} text-yellow-500`} /> // Clear sky
+  }
+
+  const getWeatherDescription = (weatherCode: number): string => {
+    if (weatherCode >= 95) return 'Gewitter'
+    if (weatherCode >= 85) return 'Starker Schneefall'
+    if (weatherCode >= 71) return 'Schnee'
+    if (weatherCode >= 61) return 'Regen'
+    if (weatherCode >= 51) return 'Nieselregen'
+    if (weatherCode >= 45) return 'Nebel'
+    if (weatherCode >= 3) return 'Bedeckt'
+    if (weatherCode >= 1) return 'Teilweise bewölkt'
+    return 'Klar'
+  }
+
+  const fetchHourlyData = async (date: string) => {
     try {
-      setIsSyncing(true)
+      setIsLoadingHourly(true)
       setError(null)
       
-      const response = await fetch('/api/weather/sync', {
-        method: 'POST'
-      })
-      
-      if (!response.ok) {
-        throw new Error('Failed to sync weather data')
+      // Get session token for authorization
+      const { data: { session } } = await supabase.auth.getSession()
+      const headers: HeadersInit = {
+        'Content-Type': 'application/json',
       }
       
-      const data = await response.json()
-      console.log('Weather sync response:', data)
+      if (session?.access_token) {
+        headers['Authorization'] = `Bearer ${session.access_token}`
+      }
       
-      // After sync, fetch the updated data
-      await fetchWeatherData()
+      const response = await fetch(`/api/weather/current?date=${date}`, {
+        headers
+      })
+      
+      const data = await response.json()
+      
+      if (!response.ok) {
+        throw new Error(data.error || data.details || 'Failed to fetch hourly weather data')
+      }
+      
+      if (data.error) {
+        throw new Error(data.error)
+      }
+      
+      if (!data.hourly || data.hourly.length === 0) {
+        throw new Error('Keine stündlichen Daten für diesen Tag verfügbar')
+      }
+      
+      setHourlyData(data.hourly || [])
+      setSunrise(data.sunrise || null)
+      setSunset(data.sunset || null)
     } catch (err) {
-      console.error('Error syncing weather data:', err)
-      setError(err instanceof Error ? err.message : 'Unknown error')
+      console.error('Error fetching hourly weather data:', err)
+      const errorMessage = err instanceof Error ? err.message : 'Unknown error'
+      setError(errorMessage)
+      // Don't show error in main error state, just log it
+      // The hourly view will show its own error message
     } finally {
-      setIsSyncing(false)
+      setIsLoadingHourly(false)
     }
   }
 
-  const getWeatherIcon = (weatherCode: number) => {
-    if (weatherCode >= 80) return <CloudRain className="h-5 w-5 text-blue-500" />
-    if (weatherCode >= 60) return <CloudRain className="h-5 w-5 text-blue-400" />
-    if (weatherCode >= 40) return <Cloud className="h-5 w-5 text-gray-500" />
-    if (weatherCode >= 20) return <Cloud className="h-5 w-5 text-gray-400" />
-    if (weatherCode >= 10) return <Cloud className="h-5 w-5 text-gray-300" />
-    return <Sun className="h-5 w-5 text-yellow-500" />
+  const handleDayClick = (date: string) => {
+    // Always open the hourly view (modal) for the selected date
+    setSelectedDate(date)
+    setError(null)
+    fetchHourlyData(date)
+  }
+
+  const closeHourlyModal = () => {
+    setSelectedDate(null)
+    setHourlyData([])
+    setSunrise(null)
+    setSunset(null)
+    setError(null)
+  }
+
+  const getSunriseSunsetForHour = (hour: number): { type: 'sunrise' | 'sunset' | null, time: string | null } => {
+    if (!sunrise || !sunset) return { type: null, time: null }
+    
+    const sunriseDate = new Date(sunrise)
+    const sunsetDate = new Date(sunset)
+    const sunriseHour = sunriseDate.getHours()
+    const sunriseMinute = sunriseDate.getMinutes()
+    const sunsetHour = sunsetDate.getHours()
+    const sunsetMinute = sunsetDate.getMinutes()
+    
+    // Check if this hour contains sunrise
+    if (hour === sunriseHour) {
+      return { 
+        type: 'sunrise', 
+        time: `${sunriseHour.toString().padStart(2, '0')}:${sunriseMinute.toString().padStart(2, '0')}` 
+      }
+    }
+    
+    // Check if this hour contains sunset
+    if (hour === sunsetHour) {
+      return { 
+        type: 'sunset', 
+        time: `${sunsetHour.toString().padStart(2, '0')}:${sunsetMinute.toString().padStart(2, '0')}` 
+      }
+    }
+    
+    return { type: null, time: null }
+  }
+
+  const formatDate = (dateString: string): string => {
+    const date = new Date(dateString)
+    const today = new Date()
+    const tomorrow = new Date(today)
+    tomorrow.setDate(tomorrow.getDate() + 1)
+    
+    if (date.toDateString() === today.toDateString()) {
+      return 'Heute'
+    }
+    if (date.toDateString() === tomorrow.toDateString()) {
+      return 'Morgen'
+    }
+    return date.toLocaleDateString('de-DE', { weekday: 'short', day: 'numeric', month: 'short' })
+  }
+
+  const formatFullDate = (dateString: string): string => {
+    const date = new Date(dateString)
+    return date.toLocaleDateString('de-DE', { 
+      weekday: 'long', 
+      day: 'numeric', 
+      month: 'long',
+      year: 'numeric'
+    })
   }
 
   if (isLoading) {
     return (
-      <div className="min-h-screen bg-gray-50 p-4">
-        <div className="max-w-4xl mx-auto">
-          <div className="flex items-center justify-center h-64">
-            <div className="text-center">
-              <RefreshCw className="h-8 w-8 animate-spin mx-auto mb-4 text-blue-600" />
-              <p className="text-gray-600">Lade Wetterdaten...</p>
-            </div>
-          </div>
+      <div className="min-h-screen bg-gray-50 flex items-center justify-center">
+        <div className="text-center">
+          <Loader2 className="h-8 w-8 animate-spin mx-auto mb-4 text-blue-600" />
+          <p className="text-gray-600">Lade Wetterdaten...</p>
         </div>
       </div>
     )
@@ -115,17 +278,18 @@ export default function WeatherPage() {
   if (error) {
     return (
       <div className="min-h-screen bg-gray-50 p-4">
-        <div className="max-w-4xl mx-auto">
-          <div className="flex items-center justify-center h-64">
-            <div className="text-center">
-              <Cloud className="h-8 w-8 mx-auto mb-4 text-red-500" />
-              <p className="text-red-600 mb-4">Fehler beim Laden der Wetterdaten</p>
-              <p className="text-gray-600 mb-4">{error}</p>
-              <Button onClick={fetchWeatherData} variant="outline">
-                <RefreshCw className="h-4 w-4 mr-2" />
-                Erneut versuchen
-              </Button>
-            </div>
+        <div className="max-w-6xl mx-auto">
+          <div className="bg-red-50 border border-red-200 rounded-xl p-6 text-center">
+            <Cloud className="h-12 w-12 mx-auto mb-4 text-red-500" />
+            <p className="text-red-600 font-medium mb-2">Fehler beim Laden der Wetterdaten</p>
+            <p className="text-gray-600 text-sm mb-4">{error}</p>
+            <button
+              onClick={fetchWeatherData}
+              className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
+            >
+              <RefreshCw className="h-4 w-4 inline mr-2" />
+              Erneut versuchen
+            </button>
           </div>
         </div>
       </div>
@@ -133,202 +297,281 @@ export default function WeatherPage() {
   }
 
   return (
-    <div className="min-h-screen bg-gray-50 p-4">
-      <div className="max-w-4xl mx-auto">
-        {/* Header */}
-        <div className="mb-6">
-          <Link href="/dashboard" className="inline-flex items-center text-blue-600 hover:text-blue-800 mb-4">
-            <ArrowLeft className="h-4 w-4 mr-2" />
-            Zurück zum Dashboard
-          </Link>
-          
+    <div className="min-h-screen bg-gray-50">
+      {/* Header */}
+      <div className="bg-white border-b border-gray-200">
+        <div className="px-4 sm:px-6 lg:px-8 py-4">
           <div className="flex items-center justify-between">
-            <div>
-              <h1 className="text-2xl font-bold text-gray-900">Wetter-Synchronisation</h1>
-              <p className="text-gray-600">Aktuelle Wetterdaten für Hamburg</p>
+            <div className="flex items-center space-x-4">
+              <Link href="/dashboard">
+                <button className="p-2 hover:bg-gray-100 rounded-lg transition-colors">
+                  <ArrowLeft className="h-5 w-5 text-gray-600" />
+                </button>
+              </Link>
+              <div>
+                <h1 className="text-2xl font-bold text-gray-900">Wetter</h1>
+                <p className="text-sm text-gray-600 mt-1">Aktuelles Wetter und 14-Tage-Vorhersage</p>
+              </div>
             </div>
             
-            <Button 
-              onClick={syncWeatherData} 
-              disabled={isSyncing}
-              className="flex items-center"
+            <button
+              onClick={fetchWeatherData}
+              disabled={isLoading}
+              className="flex items-center space-x-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors disabled:opacity-50"
             >
-              <RefreshCw className={`h-4 w-4 mr-2 ${isSyncing ? 'animate-spin' : ''}`} />
-              {isSyncing ? 'Synchronisiere...' : 'Jetzt synchronisieren'}
-            </Button>
+              <RefreshCw className={`h-4 w-4 ${isLoading ? 'animate-spin' : ''}`} />
+              <span>Aktualisieren</span>
+            </button>
           </div>
         </div>
+      </div>
 
-        {/* Status Cards */}
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
-          <Card>
-            <CardHeader className="pb-2">
-              <CardTitle className="text-sm font-medium text-gray-600">Status</CardTitle>
-            </CardHeader>
-            <CardContent>
-              <div className="flex items-center">
-                <Cloud className="h-4 w-4 text-green-500 mr-2" />
-                <span className="text-sm">Aktiv</span>
+      {/* Main Content */}
+      <div className="px-4 sm:px-6 lg:px-8 py-8">
+        <div className="max-w-6xl mx-auto">
+          {/* Current Weather */}
+          {current && (
+            <div className="bg-gradient-to-br from-blue-500 to-blue-600 rounded-2xl shadow-xl p-8 mb-8 text-white">
+              <div className="flex items-center justify-between mb-6">
+                <div>
+                  <div className="flex items-center space-x-2 mb-2">
+                    <MapPin className="h-5 w-5" />
+                    <span className="text-lg font-medium">Hamburg, Deutschland</span>
+                  </div>
+                  <p className="text-blue-100 text-sm">
+                    {new Date(current.time).toLocaleString('de-DE', {
+                      weekday: 'long',
+                      day: 'numeric',
+                      month: 'long',
+                      hour: '2-digit',
+                      minute: '2-digit'
+                    })}
+                  </p>
+                </div>
+                <div className="text-right">
+                  {getWeatherIcon(current.weatherCode, 'large')}
+                  <p className="text-blue-100 text-sm mt-2">{getWeatherDescription(current.weatherCode)}</p>
+                </div>
               </div>
-            </CardContent>
-          </Card>
 
-          <Card>
-            <CardHeader className="pb-2">
-              <CardTitle className="text-sm font-medium text-gray-600">Letzte Synchronisation</CardTitle>
-            </CardHeader>
-            <CardContent>
-              <div className="flex items-center">
-                <Clock className="h-4 w-4 text-blue-500 mr-2" />
-                <span className="text-sm">
-                  {lastSync ? new Date(lastSync).toLocaleString('de-DE') : 'Nie'}
-                </span>
-              </div>
-            </CardContent>
-          </Card>
-
-          <Card>
-            <CardHeader className="pb-2">
-              <CardTitle className="text-sm font-medium text-gray-600">Standort</CardTitle>
-            </CardHeader>
-            <CardContent>
-              <div className="flex items-center">
-                <MapPin className="h-4 w-4 text-red-500 mr-2" />
-                <span className="text-sm">Hamburg, Deutschland</span>
-              </div>
-            </CardContent>
-          </Card>
-        </div>
-
-        {/* Weather Data */}
-        <Card>
-          <CardHeader>
-            <CardTitle>Aktuelle Wetterdaten</CardTitle>
-            <CardDescription>
-              Stündliche Wetterdaten für Hamburg (Seilerstraße 40)
-            </CardDescription>
-          </CardHeader>
-          <CardContent>
-            {error && (
-              <div className="mb-4 p-3 bg-red-50 border border-red-200 rounded-lg">
-                <p className="text-red-800 text-sm">Fehler: {error}</p>
-              </div>
-            )}
-            
-            {weatherData.length === 0 ? (
-              <div className="text-center py-8">
-                <Cloud className="h-12 w-12 mx-auto text-gray-400 mb-4" />
-                <p className="text-gray-600">Keine Wetterdaten verfügbar</p>
-                <p className="text-sm text-gray-500 mt-2">
-                  Klicken Sie auf "Jetzt synchronisieren", um Wetterdaten zu laden.
-                </p>
-                {isLoading && (
-                  <p className="text-sm text-blue-600 mt-2">Lade Daten...</p>
-                )}
-              </div>
-            ) : (
-              <div className="space-y-6">
-                <p className="text-sm text-gray-600">
-                  {weatherData.length} Wetterdatenpunkte verfügbar
-                </p>
+              <div className="flex items-end space-x-8">
+                <div>
+                  <div className="text-6xl font-bold">{current.temperature.toFixed(1)}°</div>
+                  <div className="text-blue-100 text-sm mt-1">Aktuelle Temperatur</div>
+                </div>
                 
-                {/* Today's Weather */}
-                {(() => {
-                  const today = new Date().toISOString().split('T')[0]
-                  const todayData = weatherData.filter(item => item.date === today)
+                <div className="grid grid-cols-3 gap-6 flex-1 max-w-md">
+                  <div>
+                    <div className="flex items-center space-x-2 mb-1">
+                      <Droplets className="h-4 w-4" />
+                      <span className="text-2xl font-semibold">{current.humidity}%</span>
+                    </div>
+                    <div className="text-blue-100 text-xs">Luftfeuchtigkeit</div>
+                  </div>
                   
-                  if (todayData.length > 0) {
-                    return (
-                      <div className="mb-6">
-                        <h4 className="text-lg font-semibold text-gray-900 mb-3 flex items-center">
-                          <Sun className="h-5 w-5 text-yellow-500 mr-2" />
-                          Heute ({new Date().toLocaleDateString('de-DE')})
-                        </h4>
-                        <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-6 gap-3">
-                          {todayData.filter((_, index) => index % 3 === 0).slice(0, 8).map((item, index) => (
-                            <div key={index} className="bg-blue-50 border border-blue-200 rounded-lg p-3 text-center">
-                              <div className="text-xs text-gray-600 mb-1">{item.hour}:00</div>
-                              <div className="flex justify-center mb-2">
-                                {getWeatherIcon(item.weather_code)}
-                              </div>
-                              <div className="text-sm font-semibold">{item.temperature.toFixed(1)}°C</div>
-                              <div className="text-xs text-gray-500">{item.precipitation.toFixed(1)}mm</div>
+                  <div>
+                    <div className="flex items-center space-x-2 mb-1">
+                      <Wind className="h-4 w-4" />
+                      <span className="text-2xl font-semibold">{current.windSpeed}</span>
+                    </div>
+                    <div className="text-blue-100 text-xs">Wind (km/h)</div>
+                  </div>
+                  
+                  <div>
+                    <div className="flex items-center space-x-2 mb-1">
+                      <CloudRain className="h-4 w-4" />
+                      <span className="text-2xl font-semibold">{current.precipitation}</span>
+                    </div>
+                    <div className="text-blue-100 text-xs">Niederschlag (mm)</div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* 14-Day Forecast */}
+          {forecast.length > 0 && (
+            <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-6">
+              <h2 className="text-xl font-semibold text-gray-900 mb-4">14-Tage-Vorhersage</h2>
+              
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-7 gap-3">
+                {forecast.map((day, index) => {
+                  const isToday = index === 0
+                  const isSelected = selectedDate === day.date
+                  return (
+                    <button
+                      key={day.date}
+                      onClick={() => handleDayClick(day.date)}
+                      className={`border rounded-lg p-4 transition-all text-left ${
+                        isSelected
+                          ? 'bg-blue-100 border-blue-400 shadow-lg ring-2 ring-blue-300'
+                          : isToday
+                          ? 'bg-blue-50 border-blue-300 shadow-md hover:bg-blue-100'
+                          : 'bg-white border-gray-200 hover:bg-gray-50 hover:shadow-md'
+                      }`}
+                    >
+                      <div className="text-center">
+                        <div className={`font-medium mb-2 ${isSelected || isToday ? 'text-blue-900' : 'text-gray-900'}`}>
+                          {formatDate(day.date)}
+                        </div>
+                        
+                        <div className="flex justify-center mb-3">
+                          {getWeatherIcon(day.weatherCode)}
+                        </div>
+                        
+                        <div className="space-y-1">
+                          <div className="flex items-center justify-center space-x-2">
+                            <Thermometer className="h-3 w-3 text-red-500" />
+                            <span className="text-sm font-semibold text-gray-900">
+                              {day.temperatureMax.toFixed(0)}°
+                            </span>
+                          </div>
+                          
+                          <div className="flex items-center justify-center space-x-2">
+                            <Thermometer className="h-3 w-3 text-blue-500" />
+                            <span className="text-sm text-gray-600">
+                              {day.temperatureMin.toFixed(0)}°
+                            </span>
+                          </div>
+                          
+                          {day.precipitation > 0 && (
+                            <div className="flex items-center justify-center space-x-1 mt-2">
+                              <Droplets className="h-3 w-3 text-blue-500" />
+                              <span className="text-xs text-gray-600">
+                                {day.precipitation.toFixed(1)}mm
+                              </span>
                             </div>
-                          ))}
+                          )}
+                          
+                          <div className="flex items-center justify-center space-x-1 mt-1">
+                            <Wind className="h-3 w-3 text-gray-400" />
+                            <span className="text-xs text-gray-500">
+                              {day.windSpeed.toFixed(0)} km/h
+                            </span>
+                          </div>
                         </div>
                       </div>
-                    )
-                  }
-                  return null
-                })()}
+                    </button>
+                  )
+                })}
+              </div>
+            </div>
+          )}
 
-                {/* Weekly Overview */}
-                {(() => {
-                  const dailyData = weatherData.reduce((acc, item) => {
-                    if (!acc[item.date]) {
-                      acc[item.date] = []
-                    }
-                    acc[item.date].push(item)
-                    return acc
-                  }, {} as Record<string, WeatherData[]>)
+          {/* Hourly View Modal */}
+          {selectedDate && (
+            <div 
+              className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4"
+              onClick={(e) => {
+                if (e.target === e.currentTarget) {
+                  closeHourlyModal()
+                }
+              }}
+            >
+              <div className="bg-white rounded-xl shadow-xl max-w-6xl w-full max-h-[90vh] overflow-y-auto">
+                <div className="sticky top-0 bg-white border-b border-gray-200 px-6 py-4 flex items-center justify-between z-10">
+                  <h2 className="text-xl font-semibold text-gray-900">
+                    Stündliche Vorhersage - {formatFullDate(selectedDate)}
+                  </h2>
+                  <button
+                    onClick={closeHourlyModal}
+                    className="text-gray-500 hover:text-gray-700 p-2 hover:bg-gray-100 rounded-lg transition-colors"
+                    aria-label="Schließen"
+                  >
+                    <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                    </svg>
+                  </button>
+                </div>
 
-                  const sortedDates = Object.keys(dailyData).sort()
-                  const next14Days = sortedDates.slice(0, 14)
-
-                  return (
+                <div className="p-6">
+                  {isLoadingHourly ? (
+                    <div className="flex items-center justify-center py-12">
+                      <Loader2 className="h-8 w-8 animate-spin text-blue-600" />
+                      <span className="ml-3 text-gray-600">Lade stündliche Daten...</span>
+                    </div>
+                  ) : error && selectedDate ? (
+                    <div className="bg-red-50 border border-red-200 rounded-lg p-6 text-center">
+                      <p className="text-red-600 font-medium mb-2">Fehler beim Laden der stündlichen Daten</p>
+                      <p className="text-red-500 text-sm mb-4">{error}</p>
+                      <button
+                        onClick={() => fetchHourlyData(selectedDate)}
+                        className="px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 transition-colors text-sm"
+                      >
+                        Erneut versuchen
+                      </button>
+                    </div>
+                  ) : hourlyData.length > 0 ? (
                     <div>
-                      <h4 className="text-lg font-semibold text-gray-900 mb-3 flex items-center">
-                        <Cloud className="h-5 w-5 text-gray-500 mr-2" />
-                        14-Tage Übersicht
-                      </h4>
-                      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                        {next14Days.map((date) => {
-                          const dayData = dailyData[date]
-                          const maxTemp = Math.max(...dayData.map(item => item.temperature))
-                          const minTemp = Math.min(...dayData.map(item => item.temperature))
-                          const totalPrecipitation = dayData.reduce((sum, item) => sum + item.precipitation, 0)
-                          const avgWeatherCode = Math.round(dayData.reduce((sum, item) => sum + item.weather_code, 0) / dayData.length)
-                          
-                          const dateObj = new Date(date)
-                          const isToday = date === new Date().toISOString().split('T')[0]
-                          const isTomorrow = date === new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString().split('T')[0]
-                          
-                          let dayLabel = dateObj.toLocaleDateString('de-DE', { weekday: 'short', day: 'numeric', month: 'short' })
-                          if (isToday) dayLabel = 'Heute'
-                          else if (isTomorrow) dayLabel = 'Morgen'
+                      {/* Sunrise/Sunset Info */}
+                      {(sunrise || sunset) && (
+                        <div className="mb-4 flex items-center justify-center space-x-6 text-sm text-gray-600">
+                          {sunrise && (
+                            <div className="flex items-center space-x-2">
+                              <Sun className="h-4 w-4 text-yellow-500" />
+                              <span>Sonnenaufgang: {new Date(sunrise).toLocaleTimeString('de-DE', { hour: '2-digit', minute: '2-digit' })}</span>
+                            </div>
+                          )}
+                          {sunset && (
+                            <div className="flex items-center space-x-2">
+                              <Sun className="h-4 w-4 text-orange-500 rotate-180" />
+                              <span>Sonnenuntergang: {new Date(sunset).toLocaleTimeString('de-DE', { hour: '2-digit', minute: '2-digit' })}</span>
+                            </div>
+                          )}
+                        </div>
+                      )}
 
+                      <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 xl:grid-cols-8 gap-3">
+                        {hourlyData.map((hour) => {
+                          const sunInfo = getSunriseSunsetForHour(hour.hour)
                           return (
-                            <div key={date} className={`border rounded-lg p-4 ${isToday ? 'bg-yellow-50 border-yellow-200' : 'bg-white'}`}>
-                              <div className="flex items-center justify-between mb-3">
-                                <div>
-                                  <div className="font-medium text-gray-900">{dayLabel}</div>
-                                  <div className="text-xs text-gray-500">{dateObj.toLocaleDateString('de-DE')}</div>
+                            <div
+                              key={hour.time}
+                              className={`border rounded-lg p-3 transition-colors ${
+                                sunInfo.type === 'sunrise'
+                                  ? 'bg-yellow-50 border-yellow-300 shadow-md'
+                                  : sunInfo.type === 'sunset'
+                                  ? 'bg-orange-50 border-orange-300 shadow-md'
+                                  : 'border-gray-200 bg-gray-50 hover:bg-gray-100'
+                              }`}
+                            >
+                              <div className="text-center">
+                                <div className="text-sm font-medium text-gray-900 mb-1">
+                                  {hour.hour.toString().padStart(2, '0')}:00
                                 </div>
-                                <div className="flex items-center">
-                                  {getWeatherIcon(avgWeatherCode)}
+                                
+                                {sunInfo.type && sunInfo.time && (
+                                  <div className={`text-xs font-medium mb-1 ${
+                                    sunInfo.type === 'sunrise' ? 'text-yellow-700' : 'text-orange-700'
+                                  }`}>
+                                    {sunInfo.type === 'sunrise' ? '☀️ Aufgang' : '🌅 Untergang'} {sunInfo.time}
+                                  </div>
+                                )}
+                                
+                                <div className="flex justify-center mb-2">
+                                  {getWeatherIcon(hour.weatherCode)}
                                 </div>
-                              </div>
-                              
-                              <div className="grid grid-cols-2 gap-4 text-sm">
-                                <div>
-                                  <div className="flex items-center text-red-600">
-                                    <Thermometer className="h-3 w-3 mr-1" />
-                                    <span className="font-medium">{maxTemp.toFixed(1)}°</span>
+                                
+                                <div className="space-y-1">
+                                  <div className="flex items-center justify-center">
+                                    <Thermometer className="h-3 w-3 text-red-500 mr-1" />
+                                    <span className="text-sm font-semibold text-gray-900">
+                                      {hour.temperature.toFixed(0)}°
+                                    </span>
                                   </div>
-                                  <div className="flex items-center text-blue-600 mt-1">
-                                    <Thermometer className="h-3 w-3 mr-1" />
-                                    <span>{minTemp.toFixed(1)}°</span>
-                                  </div>
-                                </div>
-                                <div>
-                                  <div className="flex items-center text-blue-500">
-                                    <Droplets className="h-3 w-3 mr-1" />
-                                    <span>{totalPrecipitation.toFixed(1)}mm</span>
-                                  </div>
-                                  <div className="flex items-center text-gray-500 mt-1">
-                                    <Wind className="h-3 w-3 mr-1" />
-                                    <span>{(dayData.reduce((sum, item) => sum + item.wind_speed, 0) / dayData.length).toFixed(1)} km/h</span>
-                                  </div>
+                                  
+                                  {hour.precipitation > 0 && (
+                                    <div className="flex items-center justify-center">
+                                      <Droplets className="h-3 w-3 text-blue-500 mr-1" />
+                                      <span className="text-xs text-gray-600">
+                                        {hour.precipitation.toFixed(1)}mm
+                                      </span>
+                                    </div>
+                                  )}
+                                  
+                                  {hour.precipitation === 0 && (
+                                    <div className="text-xs text-gray-400">-</div>
+                                  )}
                                 </div>
                               </div>
                             </div>
@@ -336,33 +579,26 @@ export default function WeatherPage() {
                         })}
                       </div>
                     </div>
-                  )
-                })()}
+                  ) : (
+                    <div className="text-center py-12 text-gray-500">
+                      Keine stündlichen Daten verfügbar
+                    </div>
+                  )}
+                </div>
               </div>
-            )}
-          </CardContent>
-        </Card>
+            </div>
+          )}
 
-        {/* Info Card */}
-        <Card className="mt-6">
-          <CardHeader>
-            <CardTitle className="text-sm">Informationen</CardTitle>
-          </CardHeader>
-          <CardContent className="text-sm text-gray-600">
-            <p className="mb-2">
+          {/* Info */}
+          <div className="mt-6 bg-gray-50 rounded-lg p-4 text-sm text-gray-600">
+            <p className="mb-1">
               <strong>Datenquelle:</strong> Open-Meteo API (https://open-meteo.com/)
             </p>
-            <p className="mb-2">
-              <strong>Standort:</strong> Seilerstraße 40, 20359 Hamburg, Deutschland
-            </p>
-            <p className="mb-2">
-              <strong>Koordinaten:</strong> 53.5511°N, 9.9937°E
-            </p>
             <p>
-              <strong>Update-Frequenz:</strong> Stündlich (automatisch via Cron Job)
+              <strong>Standort:</strong> Seilerstraße 40, 20359 Hamburg, Deutschland (53.5511°N, 9.9937°E)
             </p>
-          </CardContent>
-        </Card>
+          </div>
+        </div>
       </div>
     </div>
   )

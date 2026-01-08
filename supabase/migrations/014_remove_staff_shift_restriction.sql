@@ -7,3 +7,7 @@ COMMENT ON POLICY "Users can view shifts for their organization" ON public.shift
   'Allows all users (including staff) in an organization to view all shifts in their organization';
 
 
+
+
+
+

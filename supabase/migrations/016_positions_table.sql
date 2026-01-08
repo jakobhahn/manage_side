@@ -65,3 +65,7 @@ COMMENT ON TABLE public.positions IS 'Job positions for shift planning (e.g., Se
 COMMENT ON COLUMN public.positions.color IS 'Hex color code for UI display';
 
 
+
+
+
+

@@ -21,7 +21,8 @@ import {
   Trash2,
   X,
   Power,
-  PowerOff
+  PowerOff,
+  AlertTriangle
 } from 'lucide-react'
 import { Label } from '@/components/ui/label'
 import { Input } from '@/components/ui/input'
@@ -105,6 +106,16 @@ export default function SumUpPage() {
   const [togglingMerchants, setTogglingMerchants] = useState<Set<string>>(new Set())
   const [editedDescription, setEditedDescription] = useState('')
   const [isUpdating, setIsUpdating] = useState(false)
+  const [isDeletingTransactions, setIsDeletingTransactions] = useState(false)
+  const [showDeleteTransactionsDialog, setShowDeleteTransactionsDialog] = useState(false)
+  const [showTransactionDetailsModal, setShowTransactionDetailsModal] = useState(false)
+  const [transactionIdInput, setTransactionIdInput] = useState('')
+  const [isFetchingDetails, setIsFetchingDetails] = useState(false)
+  const [transactionDetails, setTransactionDetails] = useState<any>(null)
+  const [detailsError, setDetailsError] = useState<string | null>(null)
+  const [isSavingDetails, setIsSavingDetails] = useState(false)
+  const [isSyncingItems, setIsSyncingItems] = useState(false)
+  const [syncItemsResult, setSyncItemsResult] = useState<any>(null)
   const supabase = createClient(
     process.env.NEXT_PUBLIC_SUPABASE_URL!,
     process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
@@ -121,6 +132,31 @@ export default function SumUpPage() {
     
     checkAuthAndFetchData()
   }, [])
+
+  // Handle ESC key to close modals
+  useEffect(() => {
+    const handleEscape = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') {
+        if (showTransactionDetailsModal) {
+          setShowTransactionDetailsModal(false)
+          setTransactionIdInput('')
+          setTransactionDetails(null)
+          setDetailsError(null)
+        }
+        if (showDeleteTransactionsDialog) {
+          setShowDeleteTransactionsDialog(false)
+        }
+        if (showDeleteDialog) {
+          setShowDeleteDialog(false)
+          setDeletingMerchant(null)
+          setDeleteTransactionsOption(false)
+        }
+      }
+    }
+    
+    window.addEventListener('keydown', handleEscape)
+    return () => window.removeEventListener('keydown', handleEscape)
+  }, [showTransactionDetailsModal, showDeleteTransactionsDialog, showDeleteDialog])
 
   // Auto-refresh tokens every 30 minutes
   useEffect(() => {
@@ -336,6 +372,201 @@ export default function SumUpPage() {
       setError(err instanceof Error ? err.message : 'Failed to sync transactions')
     } finally {
       setIsSyncing(false)
+    }
+  }
+
+  const handleDeleteAllTransactions = async () => {
+    setIsDeletingTransactions(true)
+    setError(null)
+    setSuccess(null)
+
+    try {
+      const { data: { session } } = await supabase.auth.getSession()
+      
+      if (!session) {
+        throw new Error('No active session')
+      }
+
+      const response = await fetch('/api/payment-transactions/delete-all', {
+        method: 'DELETE',
+        headers: {
+          'Authorization': `Bearer ${session.access_token}`,
+          'Content-Type': 'application/json',
+        },
+      })
+      
+      if (!response.ok) {
+        if (response.status === 401) {
+          router.push('/login')
+          return
+        }
+        const errorData = await response.json()
+        throw new Error(errorData.error?.message || `HTTP ${response.status}: ${response.statusText}`)
+      }
+      
+      const data = await response.json()
+      
+      if (data.error) {
+        throw new Error(data.error.message)
+      }
+      
+      setSuccess(`Successfully deleted all transactions (${data.deletedCount || 0} transactions removed)`)
+      setShowDeleteTransactionsDialog(false)
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to delete transactions')
+    } finally {
+      setIsDeletingTransactions(false)
+    }
+  }
+
+  const handleFetchTransactionDetails = async () => {
+    if (!transactionIdInput.trim()) {
+      setDetailsError('Bitte geben Sie eine Transaction ID ein')
+      return
+    }
+
+    setIsFetchingDetails(true)
+    setDetailsError(null)
+    setTransactionDetails(null)
+
+    try {
+      const { data: { session } } = await supabase.auth.getSession()
+      
+      if (!session) {
+        throw new Error('No active session')
+      }
+
+      const response = await fetch('/api/sumup/fetch-transaction-details', {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${session.access_token}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          transaction_id: transactionIdInput.trim(),
+          save_to_db: false // Only fetch, don't save yet
+        }),
+      })
+
+      if (!response.ok) {
+        const errorData = await response.json()
+        throw new Error(errorData.error?.message || `HTTP ${response.status}`)
+      }
+
+      const data = await response.json()
+      setTransactionDetails(data.transaction)
+    } catch (err) {
+      setDetailsError(err instanceof Error ? err.message : 'Failed to fetch transaction details')
+    } finally {
+      setIsFetchingDetails(false)
+    }
+  }
+
+  const handleSaveTransactionDetails = async () => {
+    if (!transactionIdInput.trim() || !transactionDetails) {
+      return
+    }
+
+    setIsSavingDetails(true)
+    setDetailsError(null)
+
+    try {
+      const { data: { session } } = await supabase.auth.getSession()
+      
+      if (!session) {
+        throw new Error('No active session')
+      }
+
+      const response = await fetch('/api/sumup/fetch-transaction-details', {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${session.access_token}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          transaction_id: transactionIdInput.trim(),
+          save_to_db: true // Save to database
+        }),
+      })
+
+      if (!response.ok) {
+        const errorData = await response.json()
+        throw new Error(errorData.error?.message || `HTTP ${response.status}`)
+      }
+
+      const data = await response.json()
+      setSuccess(`Transaction ${data.updated ? 'updated' : 'saved'} successfully!`)
+      setShowTransactionDetailsModal(false)
+      setTransactionIdInput('')
+      setTransactionDetails(null)
+    } catch (err) {
+      setDetailsError(err instanceof Error ? err.message : 'Failed to save transaction details')
+    } finally {
+      setIsSavingDetails(false)
+    }
+  }
+
+  const handleSyncItems = async () => {
+    if (!merchantCodes || merchantCodes.length === 0) {
+      setError('No merchant codes found. Please add a merchant code first.')
+      return
+    }
+
+    setIsSyncingItems(true)
+    setError(null)
+    setSuccess(null)
+    setSyncItemsResult(null)
+
+    try {
+      const { data: { session } } = await supabase.auth.getSession()
+      
+      if (!session) {
+        throw new Error('No active session')
+      }
+
+      // Build request body with date range if specified
+      const requestBody: any = {
+        limit: 100 // Process up to 100 transactions
+      }
+      
+      // Add date range if specified
+      if (fromDate) {
+        requestBody.date_from = fromDate
+      }
+      if (toDate) {
+        requestBody.date_to = toDate
+      }
+
+      const response = await fetch('/api/sumup/sync-items', {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${session.access_token}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(requestBody),
+      })
+      
+      if (!response.ok) {
+        if (response.status === 401) {
+          router.push('/login')
+          return
+        }
+        const errorData = await response.json()
+        throw new Error(errorData.error?.message || `HTTP ${response.status}: ${response.statusText}`)
+      }
+      
+      const data = await response.json()
+      
+      if (data.error) {
+        throw new Error(data.error.message)
+      }
+      
+      setSyncItemsResult(data)
+      setSuccess(`Successfully synced items for ${data.transactions_processed} transactions, created ${data.items_created} items`)
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to sync transaction items')
+    } finally {
+      setIsSyncingItems(false)
     }
   }
 
@@ -1369,23 +1600,99 @@ export default function SumUpPage() {
                 </div>
               </div>
             
-              <button 
-                onClick={handleSync}
-                disabled={isSyncing || merchantCodes.length === 0}
-                className="w-full bg-gray-900 text-white px-4 py-3 rounded-xl font-medium hover:bg-gray-800 transition-colors disabled:opacity-50 flex items-center justify-center space-x-2"
-              >
-                {isSyncing ? (
-                  <>
-                    <Loader2 className="h-4 w-4 animate-spin" />
-                    <span>Syncing...</span>
-                  </>
-                ) : (
-                  <>
-                    <Download className="h-4 w-4" />
-                    <span>Sync Transactions</span>
-                  </>
-                )}
-              </button>
+              <div className="space-y-3">
+                <button 
+                  onClick={handleSync}
+                  disabled={isSyncing || merchantCodes.length === 0}
+                  className="w-full bg-gray-900 text-white px-4 py-3 rounded-xl font-medium hover:bg-gray-800 transition-colors disabled:opacity-50 flex items-center justify-center space-x-2"
+                >
+                  {isSyncing ? (
+                    <>
+                      <Loader2 className="h-4 w-4 animate-spin" />
+                      <span>Syncing...</span>
+                    </>
+                  ) : (
+                    <>
+                      <Download className="h-4 w-4" />
+                      <span>Sync Transactions</span>
+                    </>
+                  )}
+                </button>
+
+                <button 
+                  onClick={() => setShowDeleteTransactionsDialog(true)}
+                  disabled={isDeletingTransactions || merchantCodes.length === 0}
+                  className="w-full bg-red-600 text-white px-4 py-3 rounded-xl font-medium hover:bg-red-700 transition-colors disabled:opacity-50 flex items-center justify-center space-x-2"
+                >
+                  {isDeletingTransactions ? (
+                    <>
+                      <Loader2 className="h-4 w-4 animate-spin" />
+                      <span>Deleting...</span>
+                    </>
+                  ) : (
+                    <>
+                      <Trash2 className="h-4 w-4" />
+                      <span>Delete All Transactions</span>
+                    </>
+                  )}
+                </button>
+
+                <button 
+                  onClick={() => setShowTransactionDetailsModal(true)}
+                  disabled={merchantCodes.length === 0}
+                  className="w-full bg-blue-600 text-white px-4 py-3 rounded-xl font-medium hover:bg-blue-700 transition-colors disabled:opacity-50 flex items-center justify-center space-x-2"
+                >
+                  <Download className="h-4 w-4" />
+                  <span>Fetch Transaction Details</span>
+                </button>
+
+                <button 
+                  onClick={handleSyncItems}
+                  disabled={isSyncingItems || merchantCodes.length === 0}
+                  className="w-full bg-purple-600 text-white px-4 py-3 rounded-xl font-medium hover:bg-purple-700 transition-colors disabled:opacity-50 flex items-center justify-center space-x-2"
+                >
+                  {isSyncingItems ? (
+                    <>
+                      <Loader2 className="h-4 w-4 animate-spin" />
+                      <span>Syncing Items...</span>
+                    </>
+                  ) : (
+                    <>
+                      <RefreshCw className="h-4 w-4" />
+                      <span>Sync Transaction Items</span>
+                    </>
+                  )}
+                </button>
+              </div>
+
+              {syncItemsResult && (
+                <div className="p-4 bg-purple-50 border border-purple-200 rounded-xl">
+                  <h4 className="font-medium text-purple-900 mb-2">Items Sync Complete</h4>
+                  <div className="text-sm text-purple-700 space-y-1">
+                    <p>Transactions processed: {syncItemsResult.transactions_processed}</p>
+                    <p>Items created: {syncItemsResult.items_created}</p>
+                    <p>Total transactions: {syncItemsResult.total_transactions}</p>
+                    <p>Transactions with items: {syncItemsResult.transactions_with_items}</p>
+                    {syncItemsResult.errors > 0 && (
+                      <>
+                        <p className="text-red-600 font-medium">Errors: {syncItemsResult.errors}</p>
+                        {syncItemsResult.error_details && syncItemsResult.error_details.length > 0 && (
+                          <div className="mt-2 p-2 bg-red-50 border border-red-200 rounded-lg">
+                            <p className="text-xs font-medium text-red-900 mb-1">Error Details (first 10):</p>
+                            <div className="space-y-1 max-h-40 overflow-y-auto">
+                              {syncItemsResult.error_details.map((err: any, idx: number) => (
+                                <div key={idx} className="text-xs text-red-700">
+                                  <span className="font-mono">{err.transaction_id?.substring(0, 8)}...</span>: {err.error}
+                                </div>
+                              ))}
+                            </div>
+                          </div>
+                        )}
+                      </>
+                    )}
+                  </div>
+                </div>
+              )}
 
               {syncResult && (
                 <div className="p-4 bg-green-50 border border-green-200 rounded-xl">
@@ -1762,6 +2069,238 @@ export default function SumUpPage() {
                   )}
                 </Button>
               </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Delete All Transactions Dialog */}
+      {showDeleteTransactionsDialog && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+          <div className="bg-white rounded-2xl p-6 w-full max-w-md mx-4">
+            <div className="flex items-center justify-between mb-4">
+              <h3 className="text-lg font-semibold text-gray-900">Alle Transaktionen löschen</h3>
+              <button
+                onClick={() => setShowDeleteTransactionsDialog(false)}
+                className="text-gray-400 hover:text-gray-600"
+                disabled={isDeletingTransactions}
+              >
+                <X className="h-5 w-5" />
+              </button>
+            </div>
+            
+            <div className="space-y-4">
+              <div className="p-4 bg-red-50 border border-red-200 rounded-lg">
+                <div className="flex items-start space-x-3">
+                  <AlertTriangle className="h-5 w-5 text-red-600 mt-0.5" />
+                  <div>
+                    <h4 className="font-medium text-red-900 mb-1">Achtung!</h4>
+                    <p className="text-sm text-red-700">
+                      Sie sind dabei, <strong>alle Transaktionen</strong> Ihrer Organisation unwiderruflich zu löschen.
+                      Diese Aktion kann nicht rückgängig gemacht werden!
+                    </p>
+                  </div>
+                </div>
+              </div>
+
+              <div className="p-3 bg-yellow-50 border border-yellow-200 rounded-lg">
+                <div className="flex items-start space-x-2">
+                  <AlertCircle className="h-4 w-4 text-yellow-600 mt-0.5" />
+                  <p className="text-xs text-yellow-800">
+                    <strong>Warnung:</strong> Das Löschen aller Transaktionen kann nicht rückgängig gemacht werden!
+                    Alle Analytics-Daten, Berichte und Trinkgeld-Übersichten werden dadurch beeinflusst.
+                    Sie können die Transaktionen später erneut von SumUp synchronisieren.
+                  </p>
+                </div>
+              </div>
+              
+              <div className="flex space-x-3 pt-4">
+                <Button
+                  onClick={() => setShowDeleteTransactionsDialog(false)}
+                  variant="outline"
+                  className="flex-1"
+                  disabled={isDeletingTransactions}
+                >
+                  Abbrechen
+                </Button>
+                <Button
+                  onClick={handleDeleteAllTransactions}
+                  variant="destructive"
+                  className="flex-1"
+                  disabled={isDeletingTransactions}
+                >
+                  {isDeletingTransactions ? (
+                    <>
+                      <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                      Lösche...
+                    </>
+                  ) : (
+                    <>
+                      <Trash2 className="mr-2 h-4 w-4" />
+                      Alle löschen
+                    </>
+                  )}
+                </Button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Transaction Details Modal */}
+      {showTransactionDetailsModal && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+          <div className="bg-white rounded-2xl p-6 w-full max-w-4xl mx-4 max-h-[90vh] overflow-y-auto">
+            <div className="flex items-center justify-between mb-4">
+              <h3 className="text-lg font-semibold text-gray-900">Transaction Details abrufen</h3>
+              <button
+                onClick={() => {
+                  setShowTransactionDetailsModal(false)
+                  setTransactionIdInput('')
+                  setTransactionDetails(null)
+                  setDetailsError(null)
+                }}
+                className="text-gray-400 hover:text-gray-600"
+              >
+                <X className="h-5 w-5" />
+              </button>
+            </div>
+            
+            <div className="space-y-4">
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-2">
+                  Transaction ID
+                </label>
+                <div className="flex space-x-2">
+                  <input
+                    type="text"
+                    value={transactionIdInput}
+                    onChange={(e) => setTransactionIdInput(e.target.value)}
+                    placeholder="z.B. 6b425463-3e1b-431d-83fa-1e51c2925e99"
+                    className="flex-1 px-4 py-2 border border-gray-200 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter' && !isFetchingDetails) {
+                        handleFetchTransactionDetails()
+                      }
+                    }}
+                  />
+                  <button
+                    onClick={handleFetchTransactionDetails}
+                    disabled={isFetchingDetails || !transactionIdInput.trim()}
+                    className="px-4 py-2 bg-blue-600 text-white rounded-xl font-medium hover:bg-blue-700 transition-colors disabled:opacity-50 flex items-center space-x-2"
+                  >
+                    {isFetchingDetails ? (
+                      <>
+                        <Loader2 className="h-4 w-4 animate-spin" />
+                        <span>Lade...</span>
+                      </>
+                    ) : (
+                      <>
+                        <Download className="h-4 w-4" />
+                        <span>Abrufen</span>
+                      </>
+                    )}
+                  </button>
+                </div>
+              </div>
+
+              {detailsError && (
+                <div className="p-3 bg-red-50 border border-red-200 rounded-lg">
+                  <p className="text-sm text-red-700">{detailsError}</p>
+                </div>
+              )}
+
+              {transactionDetails && (
+                <div className="space-y-4">
+                  <div className="p-4 bg-gray-50 rounded-xl border border-gray-200">
+                    <h4 className="font-medium text-gray-900 mb-3">Transaction Details</h4>
+                    <div className="grid grid-cols-2 gap-4 text-sm">
+                      <div>
+                        <span className="text-gray-600">ID:</span>
+                        <span className="ml-2 font-mono text-gray-900">{transactionDetails.id}</span>
+                      </div>
+                      <div>
+                        <span className="text-gray-600">Status:</span>
+                        <span className="ml-2 text-gray-900">{transactionDetails.status || 'N/A'}</span>
+                      </div>
+                      <div>
+                        <span className="text-gray-600">Amount:</span>
+                        <span className="ml-2 font-semibold text-gray-900">
+                          {transactionDetails.amount ? `${transactionDetails.amount} ${transactionDetails.currency || 'EUR'}` : 'N/A'}
+                        </span>
+                      </div>
+                      <div>
+                        <span className="text-gray-600">Tip Amount:</span>
+                        <span className="ml-2 font-semibold text-green-600">
+                          {transactionDetails.tip_amount ? `${transactionDetails.tip_amount} ${transactionDetails.currency || 'EUR'}` : '0.00'}
+                        </span>
+                      </div>
+                      <div>
+                        <span className="text-gray-600">VAT Amount:</span>
+                        <span className="ml-2 font-semibold text-blue-600">
+                          {transactionDetails.vat_amount ? `${transactionDetails.vat_amount} ${transactionDetails.currency || 'EUR'}` : '0.00'}
+                        </span>
+                      </div>
+                      <div>
+                        <span className="text-gray-600">Timestamp:</span>
+                        <span className="ml-2 text-gray-900">
+                          {transactionDetails.timestamp ? new Date(transactionDetails.timestamp).toLocaleString('de-DE') : 'N/A'}
+                        </span>
+                      </div>
+                      <div>
+                        <span className="text-gray-600">Merchant Code:</span>
+                        <span className="ml-2 text-gray-900">{transactionDetails.merchant_code || 'N/A'}</span>
+                      </div>
+                      <div>
+                        <span className="text-gray-600">Transaction Code:</span>
+                        <span className="ml-2 font-mono text-gray-900">{transactionDetails.transaction_code || 'N/A'}</span>
+                      </div>
+                    </div>
+
+                    <div className="mt-4 pt-4 border-t border-gray-200">
+                      <details className="text-sm">
+                        <summary className="cursor-pointer text-gray-600 hover:text-gray-900 font-medium">
+                          Vollständige JSON-Daten anzeigen
+                        </summary>
+                        <pre className="mt-2 p-3 bg-gray-100 rounded-lg overflow-x-auto text-xs">
+                          {JSON.stringify(transactionDetails, null, 2)}
+                        </pre>
+                      </details>
+                    </div>
+                  </div>
+
+                  <div className="flex space-x-3">
+                    <button
+                      onClick={handleSaveTransactionDetails}
+                      disabled={isSavingDetails}
+                      className="flex-1 bg-green-600 text-white px-4 py-3 rounded-xl font-medium hover:bg-green-700 transition-colors disabled:opacity-50 flex items-center justify-center space-x-2"
+                    >
+                      {isSavingDetails ? (
+                        <>
+                          <Loader2 className="h-4 w-4 animate-spin" />
+                          <span>Speichere...</span>
+                        </>
+                      ) : (
+                        <>
+                          <Check className="h-4 w-4" />
+                          <span>In Datenbank speichern</span>
+                        </>
+                      )}
+                    </button>
+                    <button
+                      onClick={() => {
+                        setShowTransactionDetailsModal(false)
+                        setTransactionIdInput('')
+                        setTransactionDetails(null)
+                        setDetailsError(null)
+                      }}
+                      className="px-4 py-3 bg-gray-200 text-gray-700 rounded-xl font-medium hover:bg-gray-300 transition-colors"
+                    >
+                      Schließen
+                    </button>
+                  </div>
+                </div>
+              )}
             </div>
           </div>
         </div>

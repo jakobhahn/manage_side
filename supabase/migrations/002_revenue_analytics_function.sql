@@ -10,6 +10,11 @@ DECLARE
     total_amount numeric;
     total_count bigint;
 BEGIN
+    -- Skip FAILED and CANCELLED transactions - they should not be counted in revenue
+    IF NEW.status = 'FAILED' OR NEW.status = 'CANCELLED' THEN
+        RETURN NEW;
+    END IF;
+
     -- Determine the organization_id and transaction_date from the new transaction
     org_id := NEW.organization_id;
     transaction_date := NEW.transaction_date::date;

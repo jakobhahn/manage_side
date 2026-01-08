@@ -99,6 +99,29 @@ export async function POST(request: NextRequest) {
           .single()
 
         if (!existingTransaction) {
+          // Extract tip from transaction
+          const extractTip = (tx: any): number => {
+            let tip: any = tx.tip_amount || tx.tip || null
+            if (tip === null && tx.tips) {
+              tip = tx.tips.amount || tx.tips.tip_amount || tx.tips.total || null
+            }
+            if (tip !== null && tip !== undefined) {
+              const tipNum = typeof tip === 'number' ? tip : parseFloat(String(tip))
+              return isNaN(tipNum) || tipNum <= 0 ? 0 : tipNum
+            }
+            return 0
+          }
+
+          // Extract VAT from transaction
+          const extractVat = (tx: any): number => {
+            let vat: any = tx.vat_amount || tx.vat || null
+            if (vat !== null && vat !== undefined) {
+              const vatNum = typeof vat === 'number' ? vat : parseFloat(String(vat))
+              return isNaN(vatNum) || vatNum <= 0 ? 0 : vatNum
+            }
+            return 0
+          }
+
           // Insert new transaction
           const { error: insertError } = await supabase
             .from('payment_transactions')
@@ -110,6 +133,8 @@ export async function POST(request: NextRequest) {
               status: transaction.status || 'completed',
               merchant_code: merchant_code,
               transaction_date: new Date(transaction.timestamp),
+              tip_amount: extractTip(transaction),
+              vat_amount: extractVat(transaction),
               raw_data: transaction
             })
 

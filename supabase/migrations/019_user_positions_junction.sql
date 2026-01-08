@@ -62,3 +62,7 @@ CREATE POLICY "Managers can delete position assignments" ON public.user_position
 COMMENT ON TABLE public.user_positions IS 'Junction table for many-to-many relationship between users and positions.';
 
 
+
+
+
+

@@ -140,3 +140,6 @@ export interface ApiError {
   message: string
   details?: Record<string, any>
 }
+
+// Export prescription types
+export * from './prescription'

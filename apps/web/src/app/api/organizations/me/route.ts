@@ -68,7 +68,17 @@ async function fetchUserOrganization(supabase: any, supabaseAdmin: any, user: an
         // Use the newly created profile
         const { data: organization, error: orgError } = await supabaseAdmin
           .from('organizations')
-          .select('id, name, slug, address, created_at')
+          .select(`
+            id, 
+            name, 
+            slug, 
+            address, 
+            created_at,
+            module_subscriptions (
+              module_name,
+              is_active
+            )
+          `)
           .eq('id', organizationId)
           .single()
 
@@ -76,6 +86,11 @@ async function fetchUserOrganization(supabase: any, supabaseAdmin: any, user: an
           console.error('Organization error:', orgError)
           return NextResponse.json({ error: 'Organization not found' }, { status: 404 })
         }
+
+        // Extract active modules
+        const activeModules = organization.module_subscriptions
+          ?.filter((ms: any) => ms.is_active)
+          .map((ms: any) => ms.module_name) || []
 
         return NextResponse.json({
           user: {
@@ -85,17 +100,30 @@ async function fetchUserOrganization(supabase: any, supabaseAdmin: any, user: an
             role: newProfile.role,
             organization_id: newProfile.organization_id
           },
-          organization: organization
+          organization: {
+            ...organization,
+            active_modules: activeModules
+          }
         }, { status: 200 })
       }
       
       return NextResponse.json({ error: 'User profile not found' }, { status: 404 })
     }
 
-    // Get the organization details separately
+    // Get the organization details with module subscriptions
     const { data: organization, error: orgError } = await supabaseAdmin
       .from('organizations')
-      .select('id, name, slug, address, created_at')
+      .select(`
+        id, 
+        name, 
+        slug, 
+        address, 
+        created_at,
+        module_subscriptions (
+          module_name,
+          is_active
+        )
+      `)
       .eq('id', userProfile.organization_id)
       .single()
 
@@ -103,6 +131,11 @@ async function fetchUserOrganization(supabase: any, supabaseAdmin: any, user: an
       console.error('Organization error:', orgError)
       return NextResponse.json({ error: 'Organization not found' }, { status: 404 })
     }
+
+    // Extract active modules
+    const activeModules = organization.module_subscriptions
+      ?.filter((ms: any) => ms.is_active)
+      .map((ms: any) => ms.module_name) || []
 
     return NextResponse.json({
       user: {
@@ -112,7 +145,10 @@ async function fetchUserOrganization(supabase: any, supabaseAdmin: any, user: an
         role: userProfile.role,
         organization_id: userProfile.organization_id
       },
-      organization: organization
+      organization: {
+        ...organization,
+        active_modules: activeModules
+      }
     }, { status: 200 })
   } catch (error: any) {
     console.error('Error fetching user organization:', error)

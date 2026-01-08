@@ -23,3 +23,7 @@ COMMENT ON COLUMN public.shifts.position_id IS 'Required position for this shift
 COMMENT ON COLUMN public.shifts.position IS 'Legacy position name field (deprecated, use position_id instead).';
 
 
+
+
+
+

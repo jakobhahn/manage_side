@@ -102,6 +102,10 @@ export async function GET(request: NextRequest) {
       case 'meal-times':
         analyticsData = await getMealTimeAnalysis(supabase, organizationId, dateFilter)
         break
+      case 'monthly-comparison':
+        const granularity = searchParams.get('granularity') || 'daily' // 'daily' or 'weekly'
+        analyticsData = await getMonthlyComparison(supabase, organizationId, dateFilter, granularity)
+        break
       case 'overview':
       default:
         analyticsData = await getOverviewAnalysis(supabase, organizationId, dateFilter)
@@ -851,4 +855,139 @@ async function getMealTimeAnalysis(supabase: any, organizationId: string, dateFi
       totalRevenue: mealTimes.reduce((sum, m) => sum + m.totalRevenue, 0)
     }
   }
+}
+
+async function getMonthlyComparison(supabase: any, organizationId: string, dateFilter: string, granularity: string) {
+  // Build query with date filter and pagination
+  let allTransactions: any[] = []
+  let page = 0
+  const pageSize = 1000
+  let hasMore = true
+
+  while (hasMore) {
+    let query = supabase
+      .from('payment_transactions')
+      .select('amount, transaction_date, net_amount')
+      .eq('organization_id', organizationId)
+      .eq('status', 'SUCCESSFUL')
+      .order('transaction_date', { ascending: true })
+      .range(page * pageSize, (page + 1) * pageSize - 1)
+
+    // Apply date filter if provided
+    if (dateFilter) {
+      const [startDate, endDate] = dateFilter.split('|')
+      if (startDate) {
+        query = query.gte('transaction_date', startDate)
+      }
+      if (endDate) {
+        query = query.lt('transaction_date', endDate)
+      }
+    }
+
+    const { data: transactions, error } = await query
+
+    if (error) {
+      console.error('Monthly comparison error:', error)
+      return { months: [] }
+    }
+
+    if (!transactions || transactions.length === 0) {
+      hasMore = false
+    } else {
+      allTransactions = [...allTransactions, ...transactions]
+      hasMore = transactions.length === pageSize
+      page++
+    }
+
+    // Safety limit
+    if (page > 100) {
+      console.warn('Reached pagination safety limit for monthly comparison')
+      break
+    }
+  }
+
+  // Group transactions by month and then by day/week
+  const monthMap = new Map<string, Map<string, { revenue: number; transactions: number }>>()
+
+  allTransactions.forEach((transaction) => {
+    const transactionDate = new Date(transaction.transaction_date)
+    const monthKey = `${transactionDate.getFullYear()}-${String(transactionDate.getMonth() + 1).padStart(2, '0')}`
+    
+    let periodKey: string
+    if (granularity === 'weekly') {
+      // Get week number within the month (1-5)
+      const firstDay = new Date(transactionDate.getFullYear(), transactionDate.getMonth(), 1)
+      const firstMonday = new Date(firstDay)
+      const dayOfWeek = firstDay.getDay()
+      const diff = dayOfWeek === 0 ? 6 : dayOfWeek - 1
+      firstMonday.setDate(firstDay.getDate() - diff)
+      
+      const weekStart = new Date(firstMonday)
+      const currentWeekStart = new Date(transactionDate)
+      const currentDayOfWeek = transactionDate.getDay()
+      const currentDiff = currentDayOfWeek === 0 ? 6 : currentDayOfWeek - 1
+      currentWeekStart.setDate(transactionDate.getDate() - currentDiff)
+      
+      const weekNumber = Math.floor((currentWeekStart.getTime() - weekStart.getTime()) / (7 * 24 * 60 * 60 * 1000)) + 1
+      periodKey = `Woche ${weekNumber}`
+    } else {
+      // Daily: use day of month (1-31)
+      periodKey = String(transactionDate.getDate()).padStart(2, '0')
+    }
+
+    if (!monthMap.has(monthKey)) {
+      monthMap.set(monthKey, new Map())
+    }
+
+    const periodMap = monthMap.get(monthKey)!
+    if (!periodMap.has(periodKey)) {
+      periodMap.set(periodKey, { revenue: 0, transactions: 0 })
+    }
+
+    const periodData = periodMap.get(periodKey)!
+    periodData.revenue += parseFloat(transaction.net_amount || transaction.amount || 0)
+    periodData.transactions += 1
+  })
+
+  // Convert to array format
+  const months = Array.from(monthMap.entries()).map(([monthKey, periodMap]) => {
+    const [year, month] = monthKey.split('-')
+    const monthName = new Date(parseInt(year), parseInt(month) - 1, 1).toLocaleDateString('de-DE', { month: 'long', year: 'numeric' })
+    
+    // Get all periods for this month
+    const periods: Array<{ period: string; revenue: number; transactions: number }> = []
+    
+    if (granularity === 'weekly') {
+      // For weekly, we need to check which weeks exist
+      for (let week = 1; week <= 5; week++) {
+        const weekKey = `Woche ${week}`
+        const data = periodMap.get(weekKey) || { revenue: 0, transactions: 0 }
+        periods.push({
+          period: weekKey,
+          revenue: data.revenue,
+          transactions: data.transactions
+        })
+      }
+    } else {
+      // For daily, get all days 1-31
+      const daysInMonth = new Date(parseInt(year), parseInt(month), 0).getDate()
+      for (let day = 1; day <= daysInMonth; day++) {
+        const dayKey = String(day).padStart(2, '0')
+        const data = periodMap.get(dayKey) || { revenue: 0, transactions: 0 }
+        periods.push({
+          period: dayKey,
+          revenue: data.revenue,
+          transactions: data.transactions
+        })
+      }
+    }
+
+    return {
+      monthKey,
+      monthName,
+      periods
+    }
+  }).sort((a, b) => a.monthKey.localeCompare(b.monthKey))
+
+  return { months, granularity }
 }

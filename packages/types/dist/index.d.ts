@@ -118,4 +118,5 @@ export interface ApiError {
     message: string;
     details?: Record<string, any>;
 }
+export * from './prescription';
 //# sourceMappingURL=index.d.ts.map

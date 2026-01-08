@@ -17,6 +17,7 @@ interface TimeClockEntry {
   clock_out_deviation_minutes: number | null
   has_warning: boolean
   is_approved: boolean
+  is_sick: boolean
   shift?: {
     id: string
     start_time: string
@@ -58,6 +59,7 @@ export default function TimeClockPage() {
   const [isClocking, setIsClocking] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [warning, setWarning] = useState<string | null>(null)
+  const [isSick, setIsSick] = useState(false)
 
   const supabase = createClient(
     process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -125,7 +127,26 @@ export default function TimeClockPage() {
       }
 
       const data = await response.json()
-      const active = data.entries?.find((e: TimeClockEntry) => !e.clock_out)
+      
+      // Get current user ID to ensure we only show entries for this user
+      // If user is not loaded yet, fetch it from the entries (they should all be for this user if staff)
+      let currentUserId = user?.id
+      if (!currentUserId && data.entries && data.entries.length > 0) {
+        // Get user ID from first entry (all entries should be for the same user if staff)
+        currentUserId = data.entries[0].user_id
+      }
+      
+      // Find active entry: only entries without clock_out (sick entries always have clock_out set immediately)
+      // Sick entries should never be shown as "active" since they are immediately completed
+      const active = data.entries?.find((e: TimeClockEntry) => {
+        // Only show entries for the current user (safety check)
+        if (currentUserId && e.user_id !== currentUserId) {
+          return false
+        }
+        // Only show entries without clock_out as active (normal working entries)
+        // Sick entries always have clock_out set to end of day, so they are never active
+        return !e.clock_out && !e.is_sick
+      })
       setActiveEntry(active || null)
       
       if (active) {
@@ -271,6 +292,7 @@ export default function TimeClockPage() {
           'Authorization': `Bearer ${session.access_token}`,
           'Content-Type': 'application/json',
         },
+        body: JSON.stringify({ is_sick: isSick }),
       })
 
       const data = await response.json()
@@ -286,6 +308,7 @@ export default function TimeClockPage() {
       await checkActiveEntry()
       await fetchEntries()
       await checkActiveBreak()
+      setIsSick(false) // Reset after successful clock in
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to clock in')
     } finally {
@@ -549,19 +572,33 @@ export default function TimeClockPage() {
               </h2>
               {activeEntry && (
                 <div className="mt-4 space-y-2">
-                  <p className="text-gray-600">
-                    Eingestempelt um: <span className="font-semibold">{formatTime(activeEntry.clock_in)}</span>
-                  </p>
-                  <p className="text-sm text-gray-500">{formatDate(activeEntry.clock_in)}</p>
-                  {activeEntry.shift && (
-                    <div className="mt-4 p-3 bg-blue-50 rounded-lg">
-                      <p className="text-sm text-blue-800">
-                        Geplante Schicht: {formatTime(activeEntry.shift.start_time)} - {formatTime(activeEntry.shift.end_time)}
+                  {activeEntry.is_sick ? (
+                    <>
+                      <p className="text-gray-600">
+                        <span className="font-semibold">Krank gemeldet</span> am {formatDate(activeEntry.clock_in)}
                       </p>
-                      {activeEntry.shift.position && (
-                        <p className="text-xs text-blue-600 mt-1">Position: {typeof activeEntry.shift.position === 'object' && activeEntry.shift.position !== null ? activeEntry.shift.position.name : activeEntry.shift.position}</p>
+                      <div className="mt-2 p-3 bg-orange-100 border border-orange-300 rounded-lg">
+                        <p className="text-sm text-orange-800 font-medium">🏥 Der ganze Tag zählt als Krankheitstag</p>
+                        <p className="text-xs text-orange-700 mt-1">Kein Ausstempeln erforderlich</p>
+                      </div>
+                    </>
+                  ) : (
+                    <>
+                      <p className="text-gray-600">
+                        Eingestempelt um: <span className="font-semibold">{formatTime(activeEntry.clock_in)}</span>
+                      </p>
+                      <p className="text-sm text-gray-500">{formatDate(activeEntry.clock_in)}</p>
+                      {activeEntry.shift && (
+                        <div className="mt-4 p-3 bg-blue-50 rounded-lg">
+                          <p className="text-sm text-blue-800">
+                            Geplante Schicht: {formatTime(activeEntry.shift.start_time)} - {formatTime(activeEntry.shift.end_time)}
+                          </p>
+                          {activeEntry.shift.position && (
+                            <p className="text-xs text-blue-600 mt-1">Position: {typeof activeEntry.shift.position === 'object' && activeEntry.shift.position !== null ? activeEntry.shift.position.name : activeEntry.shift.position}</p>
+                          )}
+                        </div>
                       )}
-                    </div>
+                    </>
                   )}
                 </div>
               )}
@@ -581,44 +618,70 @@ export default function TimeClockPage() {
               
               <div className="flex justify-center space-x-4">
                 {!activeEntry ? (
-                  <button
-                    onClick={handleClockIn}
-                    disabled={isClocking}
-                    className="px-8 py-4 bg-green-600 text-white rounded-xl font-semibold text-lg hover:bg-green-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center space-x-2"
-                  >
-                    <LogIn className="h-5 w-5" />
-                    <span>{isClocking ? 'Einstempeln...' : 'Einstempeln'}</span>
-                  </button>
+                  <div className="space-y-4">
+                    <div className="flex items-center justify-center">
+                      <label className="flex items-center space-x-2 cursor-pointer">
+                        <input
+                          type="checkbox"
+                          checked={isSick}
+                          onChange={(e) => setIsSick(e.target.checked)}
+                          className="h-4 w-4 text-orange-600 focus:ring-orange-500 border-gray-300 rounded"
+                        />
+                        <span className="text-sm text-gray-700">Als krank stempeln</span>
+                      </label>
+                    </div>
+                    <button
+                      onClick={handleClockIn}
+                      disabled={isClocking}
+                      className={`px-8 py-4 text-white rounded-xl font-semibold text-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center space-x-2 ${
+                        isSick 
+                          ? 'bg-orange-600 hover:bg-orange-700' 
+                          : 'bg-green-600 hover:bg-green-700'
+                      }`}
+                    >
+                      <LogIn className="h-5 w-5" />
+                      <span>{isClocking ? 'Einstempeln...' : isSick ? 'Als krank einstempeln' : 'Einstempeln'}</span>
+                    </button>
+                  </div>
                 ) : (
                   <>
-                    {!activeBreak ? (
-                      <button
-                        onClick={handleBreakStart}
-                        disabled={isClocking}
-                        className="px-6 py-4 bg-orange-600 text-white rounded-xl font-semibold text-lg hover:bg-orange-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center space-x-2"
-                      >
-                        <Coffee className="h-5 w-5" />
-                        <span>Pause</span>
-                      </button>
+                    {activeEntry.is_sick ? (
+                      <div className="text-center">
+                        <p className="text-sm text-gray-600 mb-2">Krankheitstag abgeschlossen</p>
+                        <p className="text-xs text-gray-500">Der Tag wurde automatisch als Krankheitstag markiert</p>
+                      </div>
                     ) : (
-                      <button
-                        onClick={handleBreakEnd}
-                        disabled={isClocking}
-                        className="px-6 py-4 bg-orange-600 text-white rounded-xl font-semibold text-lg hover:bg-orange-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center space-x-2"
-                      >
-                        <Play className="h-5 w-5" />
-                        <span>Pause beenden</span>
-                      </button>
+                      <>
+                        {!activeBreak ? (
+                          <button
+                            onClick={handleBreakStart}
+                            disabled={isClocking}
+                            className="px-6 py-4 bg-orange-600 text-white rounded-xl font-semibold text-lg hover:bg-orange-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center space-x-2"
+                          >
+                            <Coffee className="h-5 w-5" />
+                            <span>Pause</span>
+                          </button>
+                        ) : (
+                          <button
+                            onClick={handleBreakEnd}
+                            disabled={isClocking}
+                            className="px-6 py-4 bg-orange-600 text-white rounded-xl font-semibold text-lg hover:bg-orange-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center space-x-2"
+                          >
+                            <Play className="h-5 w-5" />
+                            <span>Pause beenden</span>
+                          </button>
+                        )}
+                        <button
+                          onClick={handleClockOut}
+                          disabled={isClocking || activeBreak !== null}
+                          className="px-8 py-4 bg-red-600 text-white rounded-xl font-semibold text-lg hover:bg-red-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center space-x-2"
+                          title={activeBreak ? 'Bitte beenden Sie zuerst die Pause' : undefined}
+                        >
+                          <LogOut className="h-5 w-5" />
+                          <span>{isClocking ? 'Ausstempeln...' : 'Ausstempeln'}</span>
+                        </button>
+                      </>
                     )}
-                    <button
-                      onClick={handleClockOut}
-                      disabled={isClocking || activeBreak !== null}
-                      className="px-8 py-4 bg-red-600 text-white rounded-xl font-semibold text-lg hover:bg-red-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center space-x-2"
-                      title={activeBreak ? 'Bitte beenden Sie zuerst die Pause' : undefined}
-                    >
-                      <LogOut className="h-5 w-5" />
-                      <span>{isClocking ? 'Ausstempeln...' : 'Ausstempeln'}</span>
-                    </button>
                   </>
                 )}
               </div>
@@ -650,6 +713,7 @@ export default function TimeClockPage() {
                           <p className="text-xs text-gray-500 mt-0.5">
                             Eingestempelt: {formatTime(entry.clock_in)}
                             {entry.clock_out && ` • Ausgestempelt: ${formatTime(entry.clock_out)}`}
+                            {entry.is_sick && <span className="ml-2 text-orange-600 font-medium">🏥 Krank</span>}
                           </p>
                         </div>
                       </div>

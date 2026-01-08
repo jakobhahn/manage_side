@@ -289,6 +289,32 @@ export async function POST(request: NextRequest) {
       })
     }
 
+    // Extract tip from transaction
+    // According to SumUp API documentation, tip_amount is directly in the transaction object
+    // https://developer.sumup.com/api/transactions/get
+    const extractTip = (tx: any): number => {
+      // First check tip_amount (official SumUp API field)
+      let tip: any = tx.tip_amount || null
+      
+      // Fallback to other possible locations
+      if (tip === null) {
+        tip = tx.tip || null
+      }
+      
+      // Check nested tips object
+      if (tip === null && tx.tips) {
+        tip = tx.tips.amount || tx.tips.tip_amount || tx.tips.total || null
+      }
+      
+      // Convert to number
+      if (tip !== null && tip !== undefined) {
+        const tipNum = typeof tip === 'number' ? tip : parseFloat(String(tip))
+        return isNaN(tipNum) || tipNum <= 0 ? 0 : tipNum
+      }
+      
+      return 0
+    }
+
     // Store transaction in database
     const { data: storedTransaction, error: storeError } = await supabase
       .from('payment_transactions')
@@ -300,6 +326,7 @@ export async function POST(request: NextRequest) {
         status: latestTransaction.status || 'completed',
         payment_type: latestTransaction.payment_type || 'card',
         timestamp: latestTransaction.timestamp,
+        tip_amount: extractTip(latestTransaction),
         sumup_data: latestTransaction, // Store full transaction data
         created_at: new Date().toISOString(),
         updated_at: new Date().toISOString()

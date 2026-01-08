@@ -94,3 +94,7 @@ COMMENT ON COLUMN public.time_clock_entries.has_warning IS 'True if deviation fr
 COMMENT ON COLUMN public.time_clock_entries.is_approved IS 'True if manager/owner has approved the time entry';
 
 
+
+
+
+

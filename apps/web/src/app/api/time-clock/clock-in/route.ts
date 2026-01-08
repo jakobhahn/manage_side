@@ -20,6 +20,10 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: { message: 'Invalid token' } }, { status: 401 })
     }
 
+    // Get request body for is_sick flag
+    const body = await request.json().catch(() => ({}))
+    const isSick = body.is_sick === true
+
     // Get user data
     const { data: userData, error: userDataError } = await supabase
       .from('users')
@@ -115,6 +119,13 @@ export async function POST(request: NextRequest) {
       hasWarning = true
     }
 
+    // For sick days, set clock_out to end of day (23:59:59) to mark the whole day as sick
+    let clockOutTime: Date | null = null
+    if (isSick) {
+      clockOutTime = new Date(clockInTime)
+      clockOutTime.setHours(23, 59, 59, 999)
+    }
+
     // Create time clock entry
     const { data: timeEntry, error: insertError } = await supabase
       .from('time_clock_entries')
@@ -123,10 +134,12 @@ export async function POST(request: NextRequest) {
         user_id: userData.id,
         shift_id: shiftId,
         clock_in: clockInTime.toISOString(),
+        clock_out: clockOutTime?.toISOString() || null,
         shift_start_time: shiftStartTime?.toISOString() || null,
         shift_end_time: shiftEndTime?.toISOString() || null,
         clock_in_deviation_minutes: clockInDeviation,
-        has_warning: hasWarning
+        has_warning: hasWarning,
+        is_sick: isSick
       })
       .select()
       .single()

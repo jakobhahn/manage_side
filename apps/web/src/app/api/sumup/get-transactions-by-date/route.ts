@@ -441,19 +441,48 @@ export async function POST(request: NextRequest) {
             
             console.log(`🔍 Client-side filtering: ${allTransactions.length} total → ${filteredTransactions.length} matching date ${date}`)
 
-            // Save filtered transactions to database with raw_data
+            // Helper function to extract tip from transaction
+            const extractTipFromTransaction = (tx: any): number => {
+              let tip: any = tx.tip_amount || tx.tip || null
+              if (tip === null && tx.tips) {
+                tip = tx.tips.amount || tx.tips.tip_amount || tx.tips.total || null
+              }
+              if (tip !== null && tip !== undefined) {
+                const tipNum = typeof tip === 'number' ? tip : parseFloat(String(tip))
+                return isNaN(tipNum) || tipNum <= 0 ? 0 : tipNum
+              }
+              return 0
+            }
+
+            // Helper function to extract VAT from transaction
+            const extractVatFromTransaction = (tx: any): number => {
+              let vat: any = tx.vat_amount || tx.vat || null
+              if (vat !== null && vat !== undefined) {
+                const vatNum = typeof vat === 'number' ? vat : parseFloat(String(vat))
+                return isNaN(vatNum) || vatNum <= 0 ? 0 : vatNum
+              }
+              return 0
+            }
+
+            // Save filtered transactions to database with raw_data, tip_amount and vat_amount
             const { error: insertError } = await supabase
               .from('payment_transactions')
               .insert(
-                filteredTransactions.map((transaction: any) => ({
-                  transaction_id: transaction.id || transaction.transaction_id,
-                  amount: transaction.amount || transaction.total_amount,
-                  currency: transaction.currency || 'EUR',
-                  status: transaction.status || 'completed',
-                  merchant_code: merchantCode,
-                  transaction_date: transaction.timestamp || transaction.created_at || transaction.date,
-                  raw_data: transaction // Store full transaction data including tip
-                }))
+                filteredTransactions.map((transaction: any) => {
+                  const tipAmount = extractTipFromTransaction(transaction)
+                  const vatAmount = extractVatFromTransaction(transaction)
+                  return {
+                    transaction_id: transaction.id || transaction.transaction_id,
+                    amount: transaction.amount || transaction.total_amount,
+                    currency: transaction.currency || 'EUR',
+                    status: transaction.status || 'completed',
+                    merchant_code: merchantCode,
+                    transaction_date: transaction.timestamp || transaction.created_at || transaction.date,
+                    tip_amount: tipAmount,
+                    vat_amount: vatAmount,
+                    raw_data: transaction // Store full transaction data including tip and VAT
+                  }
+                })
               )
 
             if (insertError) {

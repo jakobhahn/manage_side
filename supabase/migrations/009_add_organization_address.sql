@@ -8,3 +8,7 @@ COMMENT ON COLUMN public.organizations.address IS 'Physical address of the organ
 
 
 
+
+
+
+

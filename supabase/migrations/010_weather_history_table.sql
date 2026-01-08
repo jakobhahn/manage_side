@@ -62,3 +62,7 @@ COMMENT ON COLUMN public.weather_history.sync_timestamp IS 'When this data was f
 
 
 
+
+
+
+

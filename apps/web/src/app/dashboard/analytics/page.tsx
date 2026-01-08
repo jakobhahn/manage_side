@@ -90,6 +90,16 @@ interface MealTimeComparison {
   strongerPeriod: 'lunch' | 'dinner' | null
 }
 
+interface MonthlyComparisonData {
+  monthKey: string
+  monthName: string
+  periods: Array<{
+    period: string
+    revenue: number
+    transactions: number
+  }>
+}
+
 interface AnalyticsData {
   weekdays: WeekdayData[]
   weeks: WeeklyData[]
@@ -99,6 +109,8 @@ interface AnalyticsData {
   periods?: TimeComparisonData[]
   mealTimes?: MealTimeData[]
   comparison?: MealTimeComparison
+  months?: MonthlyComparisonData[]
+  granularity?: 'daily' | 'weekly'
 }
 
 export default function AnalyticsPage() {
@@ -107,9 +119,10 @@ export default function AnalyticsPage() {
   const [error, setError] = useState<string | null>(null)
   const [startDate, setStartDate] = useState('')
   const [endDate, setEndDate] = useState('')
-  const [activeTab, setActiveTab] = useState<'weekdays' | 'weeks' | 'hours' | 'weekday-detail' | 'time-comparison' | 'meal-times'>('weekdays')
+  const [activeTab, setActiveTab] = useState<'weekdays' | 'weeks' | 'hours' | 'weekday-detail' | 'time-comparison' | 'meal-times' | 'monthly-comparison'>('weekdays')
   const [selectedWeekday, setSelectedWeekday] = useState('5') // Default to Friday (5)
   const [timeComparisonPeriod, setTimeComparisonPeriod] = useState<'weekly' | 'monthly'>('weekly')
+  const [monthlyComparisonGranularity, setMonthlyComparisonGranularity] = useState<'daily' | 'weekly'>('daily')
 
   const supabase = createClient(
     process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -159,6 +172,9 @@ export default function AnalyticsPage() {
         params.append('period', timeComparisonPeriod)
       } else if (activeTab === 'meal-times') {
         analysisType = 'meal-times'
+      } else if (activeTab === 'monthly-comparison') {
+        analysisType = 'monthly-comparison'
+        params.append('granularity', monthlyComparisonGranularity)
       }
 
       const response = await fetch(`/api/analytics?type=${analysisType}&${params.toString()}`, {
@@ -437,6 +453,103 @@ export default function AnalyticsPage() {
                 </div>
                 <div className="text-sm text-gray-600">Höchster Durchschnittswert</div>
               </div>
+            </div>
+          </CardContent>
+        </Card>
+      </div>
+    )
+  }
+
+  const renderMonthlyComparison = () => {
+    if (!analyticsData?.months || analyticsData.months.length === 0) {
+      return (
+        <Card>
+          <CardContent className="py-12 text-center">
+            <p className="text-gray-500">Keine Daten für Monatsvergleich verfügbar</p>
+          </CardContent>
+        </Card>
+      )
+    }
+
+    const granularity = analyticsData.granularity || 'daily'
+    const months = analyticsData.months
+
+    // Calculate max revenue across all months for scaling
+    const maxRevenue = Math.max(...months.flatMap(m => m.periods.map(p => p.revenue)))
+
+    return (
+      <div className="space-y-6">
+        <Card>
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2 text-lg">
+              <TrendingUp className="h-4 w-4 sm:h-5 sm:w-5" />
+              Monatsvergleich - {granularity === 'daily' ? 'Täglicher' : 'Wöchentlicher'} Umsatz
+            </CardTitle>
+            <CardDescription className="text-sm">
+              Vergleich der Umsätze über alle Monate hinweg, um Muster zu erkennen
+            </CardDescription>
+          </CardHeader>
+          <CardContent>
+            <div className="space-y-8">
+              {months.map((month) => (
+                <div key={month.monthKey} className="border-b border-gray-200 pb-6 last:border-b-0 last:pb-0">
+                  <h3 className="text-lg font-semibold text-gray-900 mb-4">{month.monthName}</h3>
+                  
+                  <div className="space-y-2">
+                    {month.periods.map((period) => {
+                      const percentage = maxRevenue > 0 ? (period.revenue / maxRevenue) * 100 : 0
+                      const periodLabel = granularity === 'daily' 
+                        ? `Tag ${parseInt(period.period)}` 
+                        : period.period
+                      
+                      return (
+                        <div key={period.period} className="flex items-center gap-3">
+                          <div className="w-20 sm:w-24 text-xs sm:text-sm font-medium text-gray-700">
+                            {periodLabel}
+                          </div>
+                          <div className="flex-1">
+                            <div className="w-full bg-gray-200 rounded-full h-6 sm:h-8 relative">
+                              <div 
+                                className="bg-blue-600 h-6 sm:h-8 rounded-full transition-all duration-300 flex items-center justify-end pr-2"
+                                style={{ width: `${percentage}%`, minWidth: period.revenue > 0 ? '40px' : '0' }}
+                              >
+                                {period.revenue > 0 && (
+                                  <span className="text-xs font-semibold text-white">
+                                    {formatCurrency(period.revenue)}
+                                  </span>
+                                )}
+                              </div>
+                            </div>
+                          </div>
+                          <div className="w-20 sm:w-24 text-right">
+                            <div className="text-xs sm:text-sm font-semibold text-gray-900">
+                              {formatCurrency(period.revenue)}
+                            </div>
+                            <div className="text-xs text-gray-500">
+                              {period.transactions} Trans.
+                            </div>
+                          </div>
+                        </div>
+                      )
+                    })}
+                  </div>
+                  
+                  {/* Month Summary */}
+                  <div className="mt-4 pt-4 border-t border-gray-200">
+                    <div className="flex justify-between items-center text-sm">
+                      <span className="font-medium text-gray-700">Monatssumme:</span>
+                      <div className="text-right">
+                        <span className="font-semibold text-gray-900">
+                          {formatCurrency(month.periods.reduce((sum, p) => sum + p.revenue, 0))}
+                        </span>
+                        <span className="text-gray-500 ml-2">
+                          ({month.periods.reduce((sum, p) => sum + p.transactions, 0)} Trans.)
+                        </span>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              ))}
             </div>
           </CardContent>
         </Card>
@@ -942,6 +1055,18 @@ export default function AnalyticsPage() {
           <span className="hidden sm:inline">Essenszeiten</span>
           <span className="sm:hidden">Essen</span>
         </button>
+        <button
+          onClick={() => setActiveTab('monthly-comparison')}
+          className={`flex-shrink-0 py-2 px-3 sm:px-4 rounded-md text-xs sm:text-sm font-medium transition-colors ${
+            activeTab === 'monthly-comparison'
+              ? 'bg-white text-gray-900 shadow-sm'
+              : 'text-gray-600 hover:text-gray-900'
+          }`}
+        >
+          <TrendingUp className="h-3 w-3 sm:h-4 sm:w-4 inline mr-1 sm:mr-2" />
+          <span className="hidden sm:inline">Monatsvergleich</span>
+          <span className="sm:hidden">Monat</span>
+        </button>
         </div>
       </div>
 
@@ -1014,6 +1139,38 @@ export default function AnalyticsPage() {
         </Card>
       )}
 
+      {/* Granularity Selector for Monthly Comparison View */}
+      {activeTab === 'monthly-comparison' && (
+        <Card>
+          <CardHeader>
+            <CardTitle className="text-lg">Granularität auswählen</CardTitle>
+            <CardDescription className="text-sm">
+              Wähle aus, ob du tägliche oder wöchentliche Umsätze vergleichen möchtest
+            </CardDescription>
+          </CardHeader>
+          <CardContent>
+            <div className="space-y-4 sm:space-y-0 sm:flex sm:items-end sm:gap-4">
+              <div className="flex-1">
+                <Label htmlFor="granularity" className="text-sm">Granularität:</Label>
+                <select
+                  id="granularity"
+                  value={monthlyComparisonGranularity}
+                  onChange={(e) => setMonthlyComparisonGranularity(e.target.value as 'daily' | 'weekly')}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm"
+                >
+                  <option value="daily">Täglich</option>
+                  <option value="weekly">Wöchentlich</option>
+                </select>
+              </div>
+              <Button onClick={fetchAnalytics} className="w-full sm:w-auto sm:mb-0">
+                <TrendingUp className="h-4 w-4 mr-2" />
+                Analysieren
+              </Button>
+            </div>
+          </CardContent>
+        </Card>
+      )}
+
         {/* Tab Content */}
         {activeTab === 'weekdays' && renderWeekdayChart()}
         {activeTab === 'weekday-detail' && renderWeekdayDetailChart()}
@@ -1021,6 +1178,7 @@ export default function AnalyticsPage() {
         {activeTab === 'hours' && renderHourlyChart()}
         {activeTab === 'time-comparison' && renderTimeComparisonChart()}
         {activeTab === 'meal-times' && renderMealTimeAnalysis()}
+        {activeTab === 'monthly-comparison' && renderMonthlyComparison()}
       </div>
     </div>
   )

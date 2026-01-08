@@ -91,8 +91,15 @@ export default function UsersPage() {
     email: '',
     role: 'staff' as 'owner' | 'manager' | 'staff',
     hourly_rate: '' as string | number,
-    employment_type: '' as 'mini' | 'teilzeit' | 'vollzeit' | 'werkstudent' | '' | null
+    employment_type: '' as 'mini' | 'teilzeit' | 'vollzeit' | 'werkstudent' | '' | null,
+    vacation_days: '' as string | number
   })
+  const [currentVacationBalance, setCurrentVacationBalance] = useState<{
+    id: string
+    total_days: number
+    used_days: number
+    remaining_days: number
+  } | null>(null)
 
   const supabase = createClient(
     process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -280,13 +287,20 @@ export default function UsersPage() {
         return
       }
 
+      // Update user data
       const response = await fetch(`/api/users/${editingUser.id}`, {
         method: 'PATCH',
         headers: {
           'Authorization': `Bearer ${session.access_token}`,
           'Content-Type': 'application/json',
         },
-        body: JSON.stringify(editFormData),
+        body: JSON.stringify({
+          name: editFormData.name,
+          email: editFormData.email,
+          role: editFormData.role,
+          hourly_rate: editFormData.hourly_rate ? parseFloat(editFormData.hourly_rate.toString()) : null,
+          employment_type: editFormData.employment_type || null
+        }),
       })
 
       if (!response.ok) {
@@ -294,9 +308,43 @@ export default function UsersPage() {
         throw new Error(errorData.error?.message || 'Failed to update user')
       }
 
+      // Update vacation balance if vacation_days is provided
+      if (editFormData.vacation_days !== '') {
+        const currentYear = new Date().getFullYear()
+        const vacationDays = parseFloat(editFormData.vacation_days.toString())
+        
+        if (!isNaN(vacationDays) && vacationDays >= 0) {
+          const balanceResponse = await fetch('/api/vacation/balances', {
+            method: 'POST',
+            headers: {
+              'Authorization': `Bearer ${session.access_token}`,
+              'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({
+              user_id: editingUser.id,
+              year: currentYear,
+              total_days: vacationDays
+            }),
+          })
+
+          if (!balanceResponse.ok) {
+            console.error('Failed to update vacation balance')
+          }
+        }
+      }
+
       await Promise.all([fetchUsers(), fetchUserPositions()])
       setShowEditDialog(false)
       setEditingUser(null)
+      setCurrentVacationBalance(null)
+      setEditFormData({
+        name: '',
+        email: '',
+        role: 'staff',
+        hourly_rate: '',
+        employment_type: '',
+        vacation_days: ''
+      })
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to update user')
     }
@@ -717,15 +765,49 @@ export default function UsersPage() {
                       {openUserMenu === user.id && (
                         <div className="absolute right-0 top-10 bg-white rounded-xl flat-shadow-lg border border-gray-200 py-2 z-50 min-w-[180px]">
                           <button
-                            onClick={() => {
+                            onClick={async () => {
                               setEditingUser(user)
                               setEditFormData({
                                 name: user.name,
                                 email: user.email,
                                 role: user.role,
                                 hourly_rate: user.hourly_rate?.toString() || '',
-                                employment_type: user.employment_type || ''
+                                employment_type: user.employment_type || '',
+                                vacation_days: ''
                               })
+                              
+                              // Load vacation balance for current year
+                              try {
+                                const { data: { session } } = await supabase.auth.getSession()
+                                if (session) {
+                                  const currentYear = new Date().getFullYear()
+                                  const balanceResponse = await fetch(
+                                    `/api/vacation/balances?user_id=${user.id}&year=${currentYear}`,
+                                    {
+                                      headers: {
+                                        'Authorization': `Bearer ${session.access_token}`
+                                      }
+                                    }
+                                  )
+                                  if (balanceResponse.ok) {
+                                    const balanceData = await balanceResponse.json()
+                                    const balance = balanceData.balances?.[0]
+                                    if (balance) {
+                                      setCurrentVacationBalance(balance)
+                                      setEditFormData(prev => ({
+                                        ...prev,
+                                        vacation_days: balance.total_days.toString()
+                                      }))
+                                    } else {
+                                      setCurrentVacationBalance(null)
+                                    }
+                                  }
+                                }
+                              } catch (err) {
+                                console.error('Failed to fetch vacation balance:', err)
+                                setCurrentVacationBalance(null)
+                              }
+                              
                               setShowEditDialog(true)
                               setOpenUserMenu(null)
                             }}
@@ -960,10 +1042,43 @@ export default function UsersPage() {
                 </select>
               </div>
               
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-2">
+                  Urlaubstage {new Date().getFullYear()}
+                </label>
+                <input
+                  type="number"
+                  step="0.5"
+                  min="0"
+                  value={editFormData.vacation_days}
+                  onChange={(e) => setEditFormData({ ...editFormData, vacation_days: e.target.value })}
+                  placeholder="z.B. 25"
+                  className="w-full px-4 py-3 border border-gray-200 rounded-xl focus:ring-2 focus:ring-gray-900 focus:border-transparent transition-all duration-200 text-sm"
+                />
+                {currentVacationBalance && (
+                  <div className="mt-2 text-xs text-gray-500">
+                    Genutzt: {currentVacationBalance.used_days} Tage | 
+                    Verbleibend: {currentVacationBalance.remaining_days} Tage
+                  </div>
+                )}
+              </div>
+              
               <div className="flex space-x-3 pt-4">
                 <button
                   type="button"
-                  onClick={() => setShowEditDialog(false)}
+                  onClick={() => {
+                    setShowEditDialog(false)
+                    setEditingUser(null)
+                    setCurrentVacationBalance(null)
+                    setEditFormData({
+                      name: '',
+                      email: '',
+                      role: 'staff',
+                      hourly_rate: '',
+                      employment_type: '',
+                      vacation_days: ''
+                    })
+                  }}
                   className="flex-1 px-4 py-3 border border-gray-200 text-gray-700 rounded-xl font-medium hover:bg-gray-50 transition-colors"
                 >
                   Cancel

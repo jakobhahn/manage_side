@@ -140,6 +140,15 @@ export default function ShiftsPage() {
   const [userPositions, setUserPositions] = useState<UserPosition[]>([]) // All position assignments
   const [user, setUser] = useState<UserData | null>(null)
   const [timeClockEntries, setTimeClockEntries] = useState<TimeClockEntry[]>([])
+  const [vacationRequests, setVacationRequests] = useState<Array<{
+    id: string
+    user_id: string
+    start_date: string
+    end_date: string
+    days: number
+    status: string
+    user?: { id: string; name: string; email: string }
+  }>>([])
   const [selectedEntries, setSelectedEntries] = useState<Set<string>>(new Set())
   const [editingTimeEntry, setEditingTimeEntry] = useState<TimeClockEntry | null>(null)
   const [showEditTimeEntryModal, setShowEditTimeEntryModal] = useState(false)
@@ -178,7 +187,7 @@ export default function ShiftsPage() {
     position_id: '',
     position: '',
     notes: '',
-    status: 'scheduled'
+    status: 'scheduled',
   })
   const [templates, setTemplates] = useState<ShiftTemplate[]>([])
   const [showCreateTemplateModal, setShowCreateTemplateModal] = useState(false)
@@ -207,6 +216,39 @@ export default function ShiftsPage() {
       await handleToggleUserPosition(userId, positionId)
     }
   }, [])
+
+  // Reload vacation requests when week changes
+  useEffect(() => {
+    const fetchVacationRequests = async () => {
+      if (!user) return
+      
+      const { data: { session } } = await supabase.auth.getSession()
+      if (!session) return
+
+      const weekDays = getWeekDays(currentWeek)
+      const weekStart = new Date(weekDays[0])
+      weekStart.setDate(weekStart.getDate() - 7) // One week before
+      const weekEnd = new Date(weekDays[6])
+      weekEnd.setDate(weekEnd.getDate() + 7) // One week after
+      
+      const vacationResponse = await fetch(
+        `/api/vacation/requests?status=approved&start_date=${weekStart.toISOString().split('T')[0]}&end_date=${weekEnd.toISOString().split('T')[0]}`,
+        {
+          headers: {
+            'Authorization': `Bearer ${session.access_token}`,
+            'Content-Type': 'application/json',
+          },
+        }
+      )
+
+      if (vacationResponse.ok) {
+        const vacationData = await vacationResponse.json()
+        setVacationRequests(vacationData.requests || [])
+      }
+    }
+
+    fetchVacationRequests()
+  }, [currentWeek, user])
 
   // Close modals on ESC key
   useEffect(() => {
@@ -408,6 +450,25 @@ export default function ShiftsPage() {
           setOrganizationUsers(usersData.users || [])
         }
       }
+
+      // Fetch approved vacation requests for calendar display
+      const weekDays = getWeekDays(currentWeek)
+      const weekStart = weekDays[0]
+      const weekEnd = weekDays[6]
+      const vacationResponse = await fetch(
+        `/api/vacation/requests?status=approved&start_date=${weekStart.toISOString().split('T')[0]}&end_date=${weekEnd.toISOString().split('T')[0]}`,
+        {
+          headers: {
+            'Authorization': `Bearer ${session.access_token}`,
+            'Content-Type': 'application/json',
+          },
+        }
+      )
+
+      if (vacationResponse.ok) {
+        const vacationData = await vacationResponse.json()
+        setVacationRequests(vacationData.requests || [])
+      }
     } catch (error: any) {
       console.error('Failed to fetch shifts data:', error)
       setError(error.message)
@@ -583,7 +644,7 @@ export default function ShiftsPage() {
       position_id: shift.position_id || '',
       position: shift.position || '',
       notes: shift.notes || '',
-      status: shift.status === 'scheduled' || shift.status === 'confirmed' ? shift.status : 'scheduled'
+      status: shift.status === 'scheduled' || shift.status === 'confirmed' ? shift.status : 'scheduled',
     })
     setShowEditModal(true)
   }
@@ -1408,6 +1469,23 @@ export default function ShiftsPage() {
     })
   }
 
+  const getVacationForDate = (date: Date): Array<{
+    id: string
+    user_id: string
+    start_date: string
+    end_date: string
+    days: number
+    user?: { id: string; name: string; email: string }
+  }> => {
+    const dateStr = date.toISOString().split('T')[0]
+    return vacationRequests.filter(vr => {
+      const startDate = new Date(vr.start_date)
+      const endDate = new Date(vr.end_date)
+      const checkDate = new Date(dateStr)
+      return checkDate >= startDate && checkDate <= endDate
+    })
+  }
+
   const handleTimeSlotClick = (date: Date, hour: number, minutes: number = 0) => {
     if (user?.role !== 'manager' && user?.role !== 'owner') return
     
@@ -1773,6 +1851,7 @@ export default function ShiftsPage() {
     setDropTarget(null)
     setDragOffset({ x: 0, y: 0 })
   }
+
 
   const handleTimeSlotDrop = (e: React.DragEvent, date: Date, hour?: number, minute?: number) => {
     e.preventDefault()
@@ -2141,6 +2220,7 @@ export default function ShiftsPage() {
                     className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-gray-900 focus:border-gray-900"
                   />
                 </div>
+
 
 
                 {/* Status */}
@@ -2710,6 +2790,25 @@ export default function ShiftsPage() {
                                         }
                                       }}
                                     >
+                                      {/* Render Vacation (full day) */}
+                                      {getVacationForDate(date).map((vacation) => {
+                                        const vacationUser = organizationUsers.find(u => u.id === vacation.user_id)
+                                        if (!vacationUser) return null
+                                        
+                                        return (
+                                          <div
+                                            key={`vacation-${vacation.id}-${date.toISOString()}`}
+                                            className="absolute left-1 right-1 top-0 bottom-0 bg-green-100 border-2 border-green-400 rounded-lg px-1.5 py-0.5 flex items-center justify-center z-5"
+                                            style={{ opacity: 0.7 }}
+                                            title={`Urlaub: ${vacationUser.name}`}
+                                          >
+                                            <div className="text-xs font-medium text-green-800 truncate">
+                                              🏖️ {vacationUser.name} (Urlaub)
+                                            </div>
+                                          </div>
+                                        )
+                                      })}
+                                      
                                       {/* Render Shifts */}
                                       {dayShifts.map((shift) => {
                                         const startTime = new Date(shift.start_time)
@@ -2750,12 +2849,12 @@ export default function ShiftsPage() {
                                               }
                                             }}
                                             className={`group absolute left-1 right-1 rounded-lg px-1.5 py-0.5 shadow-sm transition-all ${
-                                              shift.user_id === null
+                                              shift.status === 'cancelled'
+                                                ? 'bg-red-100 text-red-800 border border-red-300'
+                                                : shift.user_id === null
                                                 ? 'bg-red-500 text-white border border-red-600'
                                                 : shift.status === 'confirmed'
-                                                ? 'bg-green-500 text-white border border-green-600'
-                                                : shift.status === 'cancelled'
-                                                ? 'bg-red-100 text-red-800 border border-red-300'
+                                                ? 'bg-blue-500 text-white border border-blue-600'
                                                 : 'bg-gray-500 text-white border border-gray-600'
                                             } ${
                                               (user?.role === 'manager' || user?.role === 'owner') 
@@ -2818,6 +2917,7 @@ export default function ShiftsPage() {
                                           </div>
                                         )
                                       })}
+                                      
                                     </div>
                                   )
                                 })}
@@ -2881,6 +2981,7 @@ export default function ShiftsPage() {
                                   const dayShifts = getShiftsForEmployeeAndDate(employee.id, date)
                                   const timeRange = getDayTimeRange()
                                   const hourHeight = 100 / (timeRange.end - timeRange.start) // height per hour
+                                  const employeeVacation = getVacationForDate(date).find(v => v.user_id === employee.id)
 
                                   return (
                                     <div
@@ -2924,6 +3025,19 @@ export default function ShiftsPage() {
                                         copyingShift ? 'cursor-copy hover:bg-blue-50 border-blue-200' : ''
                                       }`}
                                     >
+                                      {/* Render Vacation (full day) */}
+                                      {employeeVacation && (
+                                        <div
+                                          className="absolute left-1 right-1 top-0 bottom-0 bg-green-100 border-2 border-green-400 rounded-lg px-1.5 py-0.5 flex items-center justify-center z-5"
+                                          style={{ opacity: 0.7 }}
+                                          title="Urlaub"
+                                        >
+                                          <div className="text-xs font-medium text-green-800 truncate">
+                                            🏖️ Urlaub
+                                          </div>
+                                        </div>
+                                      )}
+                                      
                                       {/* Render Shifts */}
                                       {dayShifts.map((shift) => {
                                         const startTime = new Date(shift.start_time)
@@ -2962,12 +3076,12 @@ export default function ShiftsPage() {
                                               }
                                             }}
                                             className={`group absolute left-1 right-1 rounded-lg px-1.5 py-0.5 shadow-sm transition-all ${
-                                              shift.user_id === null
+                                              shift.status === 'cancelled'
+                                                ? 'bg-red-100 text-red-800 border border-red-300'
+                                                : shift.user_id === null
                                                 ? 'bg-red-500 text-white border border-red-600'
                                                 : shift.status === 'confirmed'
-                                                ? 'bg-green-500 text-white border border-green-600'
-                                                : shift.status === 'cancelled'
-                                                ? 'bg-red-100 text-red-800 border border-red-300'
+                                                ? 'bg-blue-500 text-white border border-blue-600'
                                                 : 'bg-gray-500 text-white border border-gray-600'
                                             } ${
                                               (user?.role === 'manager' || user?.role === 'owner') 
@@ -3032,6 +3146,7 @@ export default function ShiftsPage() {
                                           </div>
                                         )
                                       })}
+                                      
                                     </div>
                                   )
                                 })}
@@ -3061,7 +3176,7 @@ export default function ShiftsPage() {
                                       e.preventDefault()
                                       handleTimeSlotDrop(e, date)
                                     }}
-                                    onDragOver={handleTimeSlotDragOver}
+                                    onDragOver={(e) => handleTimeSlotDragOver(e, date)}
                                     onClick={(e) => {
                                       if (user?.role === 'manager' || user?.role === 'owner') {
                                         // If copying mode is active, paste the shift (as open shift)
@@ -3218,6 +3333,7 @@ export default function ShiftsPage() {
                                         </div>
                                       )
                                     })}
+                                    
                                   </div>
                                 )
                               })}
@@ -3978,7 +4094,6 @@ export default function ShiftsPage() {
                       className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-gray-900 focus:border-gray-900"
                     />
                   </div>
-
 
                   {/* Status */}
                   <div>

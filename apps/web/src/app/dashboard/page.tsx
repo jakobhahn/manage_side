@@ -15,7 +15,11 @@ import {
   LogOut,
   Loader2,
   TrendingUp,
-  Cloud
+  Cloud,
+  Coins,
+  Calendar,
+  ChefHat,
+  FileImage
 } from 'lucide-react'
 import Link from 'next/link'
 
@@ -24,6 +28,7 @@ interface Organization {
   name: string
   slug: string
   created_at: string
+  active_modules?: string[]
 }
 
 interface User {
@@ -210,61 +215,58 @@ export default function DashboardPage() {
 
       console.log('Fetching transaction statistics...')
       
-      // Fetch monthly data for total transactions
-      const monthlyResponse = await fetch('/api/revenue?period=monthly', {
+      // Fetch revenue data (new format: returns today, weekly, monthly, and transactions)
+      const revenueResponse = await fetch('/api/revenue', {
         headers: {
           'Authorization': `Bearer ${session.access_token}`,
           'Content-Type': 'application/json',
         },
       })
 
-      // Fetch daily data for today's revenue
-      const dailyResponse = await fetch('/api/revenue?period=daily', {
-        headers: {
-          'Authorization': `Bearer ${session.access_token}`,
-          'Content-Type': 'application/json',
-        },
-      })
-
-      console.log('Transaction stats API responses:', monthlyResponse.status, dailyResponse.status)
+      console.log('Transaction stats API response:', revenueResponse.status)
       
-      if (monthlyResponse.ok) {
-        const monthlyData = await monthlyResponse.json()
-        const totalTransactions = monthlyData.revenueData?.reduce((sum: number, item: any) => sum + (item.transaction_count || 0), 0) || 0
+      if (revenueResponse.ok) {
+        const revenueData = await revenueResponse.json()
+        
+        // Calculate total transactions from monthly data or transactions array
+        const totalTransactions = revenueData.monthly?.reduce((sum: number, item: any) => sum + (item.transaction_count || 0), 0) || 
+                                  revenueData.transactions?.length || 0
         console.log('API total transactions:', totalTransactions)
         
-        // Don't override direct query results
-        console.log('📊 API total transactions:', totalTransactions, '- not setting to avoid override')
+        // Set total transactions if not already set by direct query
+        if (totalTransactions > 0) {
+          setTotalTransactions(totalTransactions)
+        }
         
-        // Get the most recent transaction date
-        if (monthlyData.revenueData && monthlyData.revenueData.length > 0) {
-          const mostRecent = monthlyData.revenueData[0]
-          setLastSyncDate(mostRecent.period_start)
+        // Get the most recent transaction date from monthly data
+        if (revenueData.monthly && revenueData.monthly.length > 0) {
+          const mostRecent = revenueData.monthly[0]
+          setLastSyncDate(mostRecent.month_start)
+        } else if (revenueData.transactions && revenueData.transactions.length > 0) {
+          // Fallback to transactions if monthly data not available
+          const mostRecent = revenueData.transactions[0]
+          if (mostRecent.transaction_date) {
+            const date = new Date(mostRecent.transaction_date)
+            setLastSyncDate(date.toISOString().split('T')[0])
+          }
         }
-      } else if (monthlyResponse.status === 403) {
+        
+        // Set today's revenue from today data
+        if (revenueData.today) {
+          const todayRev = revenueData.today.revenue || 0
+          console.log('📊 API today\'s revenue:', todayRev)
+          // Set today's revenue if not already set
+          if (todayRevenue === 0 || !todayRevenue) {
+            setTodayRevenue(todayRev)
+          }
+        }
+      } else if (revenueResponse.status === 403) {
         // Silently skip if user doesn't have permission (owner/manager only)
         console.log('User does not have permission to view revenue statistics (requires owner/manager role)')
       } else {
         // Only log non-permission errors
-        const errorData = await monthlyResponse.json().catch(() => ({ error: { message: 'Unknown error' } }))
-        console.error('Failed to fetch monthly transaction stats:', monthlyResponse.status, errorData)
-      }
-
-      if (dailyResponse.ok) {
-        const dailyData = await dailyResponse.json()
-        // Get today's revenue (most recent day)
-        if (dailyData.revenueData && dailyData.revenueData.length > 0) {
-          const todayRevenue = dailyData.revenueData[0]?.total_revenue || 0
-          console.log('API today\'s revenue:', todayRevenue)
-          // Don't override direct query results
-          console.log('📊 API today\'s revenue:', todayRevenue, '- not setting to avoid override')
-        }
-      } else if (dailyResponse.status === 403) {
-        // Silently skip if user doesn't have permission (owner/manager only)
-        console.log('User does not have permission to view revenue statistics (requires owner/manager role)')
-      } else {
-        // Only log non-permission errors
-        console.error('Failed to fetch daily revenue stats:', dailyResponse.status)
+        const errorData = await revenueResponse.json().catch(() => ({ error: { message: 'Unknown error' } }))
+        console.error('Failed to fetch revenue stats:', revenueResponse.status, errorData)
       }
     } catch (err) {
       console.error('Error fetching transaction stats:', err)
@@ -596,6 +598,18 @@ export default function DashboardPage() {
           link: "/dashboard/revenue"
         },
         {
+          title: "Trinkgeld",
+          value: "Übersicht",
+          icon: Coins,
+          link: "/dashboard/tips"
+        },
+        {
+          title: "Trinkgeld-Verteilung",
+          value: "Kalender",
+          icon: Calendar,
+          link: "/dashboard/tips-distribution"
+        },
+        {
           title: "SumUp Transactions",
           value: totalTransactions.toLocaleString(),
           icon: CreditCard,
@@ -633,6 +647,12 @@ export default function DashboardPage() {
     return stats
   }
 
+  // Helper function to check if a module is active
+  const isModuleActive = (moduleName: string): boolean => {
+    if (!organization?.active_modules) return false
+    return organization.active_modules.includes(moduleName)
+  }
+
   const renderQuickActions = () => {
     const actions: Array<{
       title: string
@@ -645,24 +665,42 @@ export default function DashboardPage() {
 
     // Staff can only see shift-related actions
     if (user?.role === 'staff') {
-      actions.push(
-        {
-          title: "View My Schedule",
-          description: "Check your upcoming shifts and schedule",
-          icon: Clock,
-          href: "/dashboard/shifts",
-          variant: "default" as const
-        },
-        {
-          title: "Clock In/Out",
-          description: "Record your work hours",
-          icon: Clock,
-          href: "/dashboard/time-clock",
-          variant: "outline" as const
-        }
-      )
+      // Staff can see shifts if shift_planning module is active
+      if (isModuleActive('shift_planning')) {
+        actions.push(
+          {
+            title: "View My Schedule",
+            description: "Check your upcoming shifts and schedule",
+            icon: Clock,
+            href: "/dashboard/shifts",
+            variant: "default" as const
+          },
+          {
+            title: "Vacation",
+            description: "Request and manage vacation",
+            icon: Calendar,
+            href: "/dashboard/vacation",
+            variant: "outline" as const
+          }
+        )
+      }
+      
+      // Staff can see time clock if time_clock module is active
+      if (isModuleActive('time_clock')) {
+        actions.push(
+          {
+            title: "Clock In/Out",
+            description: "Record your work hours",
+            icon: Clock,
+            href: "/dashboard/time-clock",
+            variant: "outline" as const
+          }
+        )
+      }
     } else {
-      // Owner and Manager see all actions
+      // Owner and Manager see actions based on active modules
+      
+      // Always show team management (not module-based)
       actions.push(
         {
           title: "Manage Team",
@@ -670,35 +708,111 @@ export default function DashboardPage() {
           icon: Users,
           href: "/dashboard/users",
           variant: "default" as const
-        },
-        {
-          title: "View Analytics",
-          description: "Check revenue and performance metrics",
-          icon: BarChart3,
-          href: "/dashboard/revenue",
-          variant: "outline" as const
-        },
-        {
-          title: "Schedule Shifts",
-          description: "Plan and manage employee schedules",
-          icon: Clock,
-          href: "/dashboard/shifts",
-          variant: "outline" as const
-        },
-        {
-          title: "Manage Inventory",
-          description: "Track stock levels and suppliers",
-          icon: ShoppingCart,
-          href: "/dashboard/inventory",
-          variant: "outline" as const
-        },
+        }
+      )
+
+      // Revenue Analytics
+      if (isModuleActive('revenue_analytics')) {
+        actions.push(
+          {
+            title: "View Analytics",
+            description: "Check revenue and performance metrics",
+            icon: BarChart3,
+            href: "/dashboard/revenue",
+            variant: "outline" as const
+          }
+        )
+      }
+
+      // Shift Planning
+      if (isModuleActive('shift_planning')) {
+        actions.push(
+          {
+            title: "Schedule Shifts",
+            description: "Plan and manage employee schedules",
+            icon: Clock,
+            href: "/dashboard/shifts",
+            variant: "outline" as const
+          },
+          {
+            title: "Vacation",
+            description: "Manage vacation requests and balances",
+            icon: Calendar,
+            href: "/dashboard/vacation",
+            variant: "outline" as const
+          }
+        )
+      }
+
+      // Inventory Management
+      if (isModuleActive('inventory_management')) {
+        actions.push(
+          {
+            title: "Manage Inventory",
+            description: "Track stock levels and suppliers",
+            icon: ShoppingCart,
+            href: "/dashboard/inventory",
+            variant: "outline" as const
+          },
+          {
+            title: "Suppliers",
+            description: "Manage suppliers and vendors",
+            icon: Building2,
+            href: "/dashboard/suppliers",
+            variant: "outline" as const
+          },
+          {
+            title: "Products",
+            description: "Manage products and recipes",
+            icon: ChefHat,
+            href: "/dashboard/products",
+            variant: "outline" as const
+          }
+        )
+      }
+
+      // Time Clock
+      if (isModuleActive('time_clock')) {
+        actions.push(
+          {
+            title: "Time Clock",
+            description: "View and manage time clock entries",
+            icon: Clock,
+            href: "/dashboard/time-clock",
+            variant: "outline" as const
+          },
+          {
+            title: "Monatsübersicht",
+            description: "Übersicht über Urlaub, Arbeitsstunden und Krankheitstage",
+            icon: Calendar,
+            href: "/dashboard/monthly-summary",
+            variant: "outline" as const
+          }
+        )
+      }
+
+      // Prescription Validation
+      if (isModuleActive('prescription_validation')) {
+        actions.push(
+          {
+            title: "Rezept prüfen",
+            description: "Heilmittelverordnung hochladen und prüfen",
+            icon: FileImage,
+            href: "/dashboard/prescriptions",
+            variant: "outline" as const
+          }
+        )
+      }
+
+      // SumUp Integration (always available for revenue tracking)
+      actions.push(
         {
           title: "SumUp Integration",
           description: "Sync payment data and manage merchant accounts",
           icon: CreditCard,
           href: "/dashboard/sumup",
           variant: "outline" as const
-        },
+        }
       )
     }
 

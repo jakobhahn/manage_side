@@ -88,3 +88,7 @@ COMMENT ON COLUMN public.shifts.position IS 'Job position for this shift (e.g., 
 COMMENT ON COLUMN public.shifts.created_by IS 'User ID of the person who created this shift';
 
 
+
+
+
+

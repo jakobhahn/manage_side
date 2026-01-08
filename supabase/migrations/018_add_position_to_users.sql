@@ -9,3 +9,7 @@ CREATE INDEX idx_users_position_id ON public.users(position_id);
 COMMENT ON COLUMN public.users.position_id IS 'Primary position of this employee.';
 
 
+
+
+
+

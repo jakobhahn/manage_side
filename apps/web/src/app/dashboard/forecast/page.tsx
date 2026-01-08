@@ -71,6 +71,7 @@ interface ForecastResponse {
       dataPoints: number
       totalForecasts: number
     }
+    explanation?: string
   }
 }
 
@@ -86,10 +87,15 @@ interface HourlyWeatherData {
 
 export default function ForecastPage() {
   const [forecastData, setForecastData] = useState<ForecastResponse | null>(null)
+  const [pastForecasts, setPastForecasts] = useState<ForecastData[]>([])
   const [isLoading, setIsLoading] = useState(true)
+  const [isLoadingPast, setIsLoadingPast] = useState(false)
   const [error, setError] = useState<string | null>(null)
-  const [startDate, setStartDate] = useState<string>('')
-  const [endDate, setEndDate] = useState<string>('')
+  const [activeTab, setActiveTab] = useState<'forecast' | 'past'>('forecast')
+  const [selectedMonth, setSelectedMonth] = useState<string>(() => {
+    const today = new Date()
+    return `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}`
+  })
   const [selectedView, setSelectedView] = useState<'calendar' | 'chart'>('calendar')
   const [selectedDate, setSelectedDate] = useState<string | null>(null)
   const [hourlyData, setHourlyData] = useState<HourlyWeatherData[]>([])
@@ -102,16 +108,14 @@ export default function ForecastPage() {
   const router = useRouter()
 
   useEffect(() => {
-    // Set default date range (next 30 days)
-    const today = new Date()
-    const nextMonth = new Date(today)
-    nextMonth.setDate(nextMonth.getDate() + 30)
-    
-    setStartDate(today.toISOString().split('T')[0])
-    setEndDate(nextMonth.toISOString().split('T')[0])
-    
     fetchForecastData()
   }, [])
+
+  useEffect(() => {
+    if (activeTab === 'past') {
+      fetchPastForecasts()
+    }
+  }, [activeTab, selectedMonth])
 
   const fetchForecastData = async () => {
     try {
@@ -149,12 +153,9 @@ export default function ForecastPage() {
         throw new Error('No organization found')
       }
 
-      // Fetch forecast data
-      const forecastStart = startDate || new Date().toISOString().split('T')[0]
-      const forecastEnd = endDate || new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString().split('T')[0]
-
+      // Fetch forecast data (nur nächste 14 Tage)
       const response = await fetch(
-        `/api/forecast?organizationId=${organizationId}&startDate=${forecastStart}&endDate=${forecastEnd}`
+        `/api/forecast?organizationId=${organizationId}`
       )
 
       if (!response.ok) {
@@ -170,6 +171,73 @@ export default function ForecastPage() {
       setError(error.message)
     } finally {
       setIsLoading(false)
+    }
+  }
+
+  const fetchPastForecasts = async () => {
+    try {
+      setIsLoadingPast(true)
+      setError(null)
+
+      // Get organization ID
+      const { data: { user: authUser } } = await supabase.auth.getUser()
+      if (!authUser) {
+        router.push('/login')
+        return
+      }
+
+      const { data: { session } } = await supabase.auth.getSession()
+      if (!session) {
+        router.push('/login')
+        return
+      }
+
+      const orgResponse = await fetch('/api/organizations/me', {
+        headers: {
+          'Authorization': `Bearer ${session.access_token}`,
+          'Content-Type': 'application/json',
+        },
+      })
+
+      if (!orgResponse.ok) {
+        throw new Error('Failed to fetch organization data')
+      }
+
+      const orgData = await orgResponse.json()
+      const organizationId = orgData.organization?.id
+
+      if (!organizationId) {
+        throw new Error('No organization found')
+      }
+
+      // Parse selected month
+      const [year, month] = selectedMonth.split('-').map(Number)
+      const startDate = new Date(year, month - 1, 1).toISOString().split('T')[0]
+      const endDate = new Date(year, month, 0).toISOString().split('T')[0]
+
+      // Fetch past forecasts
+      const response = await fetch(
+        `/api/forecast/past?organizationId=${organizationId}&startDate=${startDate}&endDate=${endDate}`,
+        {
+          headers: {
+            'Authorization': `Bearer ${session.access_token}`,
+            'Content-Type': 'application/json',
+          },
+        }
+      )
+
+      if (!response.ok) {
+        throw new Error('Failed to fetch past forecasts')
+      }
+
+      const data = await response.json()
+      setPastForecasts(data.forecasts || [])
+
+    } catch (error: any) {
+      console.error('Error fetching past forecasts:', error)
+      setError(error.message)
+    } finally {
+      setIsLoadingPast(false)
     }
   }
 
@@ -209,7 +277,10 @@ export default function ForecastPage() {
 
   const handleDayClick = (date: string) => {
     setSelectedDate(date)
-    fetchHourlyData(date)
+    // Nur stündliche Daten laden, wenn wir im "Vergangenheit"-Tab sind
+    if (activeTab === 'past') {
+      fetchHourlyData(date)
+    }
   }
 
   const getTrendIcon = (trend: string) => {
@@ -361,7 +432,11 @@ export default function ForecastPage() {
                     ${isPast ? 'opacity-60' : ''}
                     ${selectedDate === day.dateStr ? 'ring-2 ring-blue-500' : ''}
                   `}
-                  onClick={() => handleDayClick(day.dateStr)}
+                  onClick={() => {
+                    if (activeTab === 'forecast') {
+                      handleDayClick(day.dateStr)
+                    }
+                  }}
                 >
                   <div className="flex items-center justify-between mb-2">
                     <div className="text-sm font-medium text-gray-900">
@@ -391,7 +466,13 @@ export default function ForecastPage() {
                       </div>
                       
                       {forecast.actualRevenue && (
-                        <div className="text-xs text-gray-500">
+                        <div className={`text-xs font-semibold ${
+                          forecast.actualRevenue > forecast.forecastedRevenue 
+                            ? 'text-green-600' 
+                            : forecast.actualRevenue < forecast.forecastedRevenue
+                            ? 'text-red-600'
+                            : 'text-gray-500'
+                        }`}>
                           Tatsächlich: €{forecast.actualRevenue.toFixed(0)}
                         </div>
                       )}
@@ -481,7 +562,13 @@ export default function ForecastPage() {
                 </div>
                 
                 {day.actualRevenue && (
-                  <div className="text-xs text-gray-500 mt-1">
+                  <div className={`text-xs font-semibold mt-1 ${
+                    day.actualRevenue > day.forecastedRevenue 
+                      ? 'text-green-600' 
+                      : day.actualRevenue < day.forecastedRevenue
+                      ? 'text-red-600'
+                      : 'text-gray-500'
+                  }`}>
                     Tatsächlich: €{day.actualRevenue.toFixed(0)}
                   </div>
                 )}
@@ -503,6 +590,285 @@ export default function ForecastPage() {
         })}
       </div>
     )
+  }
+
+  const renderPastForecastsCalendar = () => {
+    if (pastForecasts.length === 0) return null
+
+    const [year, month] = selectedMonth.split('-').map(Number)
+    const firstDay = new Date(year, month - 1, 1)
+    const lastDay = new Date(year, month, 0)
+    const daysInMonth = lastDay.getDate()
+    const startDayOfWeek = firstDay.getDay()
+
+    // Create calendar grid
+    const calendarDays = []
+    
+    // Empty cells for days before month starts
+    for (let i = 0; i < startDayOfWeek; i++) {
+      calendarDays.push(null)
+    }
+
+    // Days of the month
+    for (let day = 1; day <= daysInMonth; day++) {
+      const dateStr = `${year}-${String(month).padStart(2, '0')}-${String(day).padStart(2, '0')}`
+      const forecast = pastForecasts.find(f => f.date === dateStr)
+      calendarDays.push({ day, date: dateStr, forecast })
+    }
+
+    const weekdayNames = ['So', 'Mo', 'Di', 'Mi', 'Do', 'Fr', 'Sa']
+
+    return (
+      <div className="space-y-4">
+        {/* Weekday headers */}
+        <div className="grid grid-cols-7 gap-2">
+          {weekdayNames.map(day => (
+            <div key={day} className="text-center text-sm font-medium text-gray-600 py-2">
+              {day}
+            </div>
+          ))}
+        </div>
+
+        {/* Calendar grid */}
+        <div className="grid grid-cols-7 gap-2">
+          {calendarDays.map((item, index) => {
+            if (!item) {
+              return <div key={index} className="aspect-square" />
+            }
+
+            const { day, date, forecast } = item
+            const isToday = date === new Date().toISOString().split('T')[0]
+            const isPast = new Date(date) < new Date()
+            const hasActual = forecast?.actualRevenue !== undefined
+
+            return (
+              <div
+                key={date}
+                className={`
+                  aspect-square border rounded-lg p-2 text-sm
+                  ${isToday ? 'bg-blue-50 border-blue-300' : 'bg-white border-gray-200'}
+                  ${!isPast ? 'opacity-50' : ''}
+                `}
+              >
+                <div className="flex items-center justify-between mb-1">
+                  <span className={`font-medium ${isToday ? 'text-blue-900' : 'text-gray-900'}`}>
+                    {day}
+                  </span>
+                  {forecast && getWeatherIcon(forecast.weather)}
+                </div>
+
+                {forecast && (
+                  <div className="space-y-1 text-xs">
+                    {hasActual ? (
+                      <>
+                        <div className="text-gray-600">
+                          Prognose: €{forecast.forecastedRevenue.toFixed(0)}
+                        </div>
+                        <div className={`font-semibold ${
+                          forecast.actualRevenue! > forecast.forecastedRevenue 
+                            ? 'text-green-600' 
+                            : forecast.actualRevenue! < forecast.forecastedRevenue
+                            ? 'text-red-600'
+                            : 'text-gray-900'
+                        }`}>
+                          Tatsächlich: €{forecast.actualRevenue!.toFixed(0)}
+                        </div>
+                        {forecast.accuracy && (
+                          <div className={`px-1 py-0.5 rounded text-xs ${
+                            forecast.actualRevenue! > forecast.forecastedRevenue
+                              ? 'bg-green-100 text-green-700'
+                              : getAccuracyColor(forecast.accuracy.rating)
+                          }`}>
+                            {forecast.accuracy.percentage.toFixed(0)}%
+                          </div>
+                        )}
+                      </>
+                    ) : (
+                      <div className="text-gray-500">
+                        Prognose: €{forecast.forecastedRevenue.toFixed(0)}
+                      </div>
+                    )}
+                  </div>
+                )}
+              </div>
+            )
+          })}
+        </div>
+      </div>
+    )
+  }
+
+  const renderForecastDetail = () => {
+    if (!selectedDate) return null
+
+    const selectedForecast = forecastData?.forecast.find(f => f.date === selectedDate)
+    if (!selectedForecast) return null
+
+    const formattedDate = new Date(selectedDate).toLocaleDateString('de-DE', {
+      weekday: 'long',
+      year: 'numeric',
+      month: 'long',
+      day: 'numeric'
+    })
+
+    const weekdayNames = ['Sonntag', 'Montag', 'Dienstag', 'Mittwoch', 'Donnerstag', 'Freitag', 'Samstag']
+    const dateObj = new Date(selectedDate)
+    const weekdayName = weekdayNames[dateObj.getDay()]
+
+    // Berechne die einzelnen Schritte der Berechnung
+    const baseRevenue = selectedForecast.factors.historicalAverage // Bereits wochentagsspezifisch
+    const trendAdjustment = baseRevenue * (1 + (selectedForecast.factors.weeklyTrend / 100) * 0.3)
+    const weatherAdjustment = trendAdjustment * selectedForecast.factors.weatherFactor
+    const finalForecast = selectedForecast.forecastedRevenue
+
+    return (
+      <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+        <div className="bg-white rounded-lg max-w-3xl w-full max-h-[90vh] overflow-y-auto">
+          <div className="p-6">
+            <div className="flex items-center justify-between mb-6">
+              <div>
+                <h2 className="text-2xl font-bold text-gray-900">{formattedDate}</h2>
+                <div className="flex items-center space-x-4 mt-2">
+                  <div className="text-lg font-semibold text-blue-600">
+                    Prognose: €{finalForecast.toFixed(2)}
+                  </div>
+                  {selectedForecast.actualRevenue && (
+                    <div className={`text-lg font-semibold ${
+                      selectedForecast.actualRevenue > selectedForecast.forecastedRevenue 
+                        ? 'text-green-600' 
+                        : selectedForecast.actualRevenue < selectedForecast.forecastedRevenue
+                        ? 'text-red-600'
+                        : 'text-gray-600'
+                    }`}>
+                      Tatsächlich: €{selectedForecast.actualRevenue.toFixed(2)}
+                    </div>
+                  )}
+                  <div className={`text-sm px-2 py-1 rounded ${getConfidenceColor(selectedForecast.confidence)}`}>
+                    {selectedForecast.confidence}% Sicherheit
+                  </div>
+                </div>
+              </div>
+              <Button 
+                variant="outline" 
+                onClick={() => setSelectedDate(null)}
+                className="text-gray-500 hover:text-gray-700"
+              >
+                ✕ Schließen
+              </Button>
+            </div>
+
+            <div className="space-y-6">
+              <div>
+                <h3 className="text-lg font-semibold text-gray-900 mb-4">Berechnungsdetails</h3>
+                
+                <div className="space-y-3">
+                  {/* Schritt 1: Basis (wochentagsspezifisch) */}
+                  <div className="bg-gray-50 rounded-lg p-4">
+                    <div className="flex items-center justify-between mb-2">
+                      <span className="font-medium text-gray-700">
+                        1. Historischer Durchschnitt für {weekdayName} (letzte 4 Wochen)
+                      </span>
+                      <span className="text-lg font-semibold text-gray-900">€{baseRevenue.toFixed(2)}</span>
+                    </div>
+                    <p className="text-sm text-gray-600">
+                      Basiswert aus den letzten 28 Tagen, berechnet nur für {weekdayName}
+                    </p>
+                  </div>
+
+                  {/* Schritt 2: Trend */}
+                  <div className="bg-purple-50 rounded-lg p-4">
+                    <div className="flex items-center justify-between mb-2">
+                      <span className="font-medium text-gray-700">2. Trend-Anpassung</span>
+                      <span className="text-lg font-semibold text-purple-900">
+                        {selectedForecast.factors.weeklyTrend > 0 ? '+' : ''}{selectedForecast.factors.weeklyTrend.toFixed(1)}% (× 0.3)
+                      </span>
+                    </div>
+                    <p className="text-sm text-gray-600">
+                      Konservative Trend-Anpassung (max. 30% des Trends)
+                    </p>
+                    <div className="mt-2 text-sm font-medium text-purple-900">
+                      = €{trendAdjustment.toFixed(2)}
+                    </div>
+                  </div>
+
+                  {/* Schritt 3: Wetter */}
+                  <div className="bg-green-50 rounded-lg p-4">
+                    <div className="flex items-center justify-between mb-2">
+                      <span className="font-medium text-gray-700">3. Wetter-Faktor</span>
+                      <span className="text-lg font-semibold text-green-900">
+                        × {selectedForecast.factors.weatherFactor.toFixed(2)}
+                      </span>
+                    </div>
+                    {selectedForecast.weather && (
+                      <div className="text-sm text-gray-600 space-y-1">
+                        <p>
+                          Temperatur: {selectedForecast.weather.temperature}°C, 
+                          Niederschlag: {selectedForecast.weather.precipitation}mm, 
+                          Wind: {selectedForecast.weather.windSpeed} km/h
+                        </p>
+                        <p>
+                          {selectedForecast.factors.weatherFactor > 1 
+                            ? 'Gutes Wetter erhöht den erwarteten Umsatz' 
+                            : selectedForecast.factors.weatherFactor < 1
+                            ? 'Schlechtes Wetter reduziert den erwarteten Umsatz'
+                            : 'Wetter hat keinen Einfluss'}
+                        </p>
+                      </div>
+                    )}
+                    <div className="mt-2 text-sm font-medium text-green-900">
+                      = €{weatherAdjustment.toFixed(2)}
+                    </div>
+                  </div>
+
+                  {/* Ergebnis */}
+                  <div className="bg-blue-100 border-2 border-blue-300 rounded-lg p-4">
+                    <div className="flex items-center justify-between">
+                      <span className="text-lg font-bold text-blue-900">Prognose-Umsatz</span>
+                      <span className="text-2xl font-bold text-blue-900">€{finalForecast.toFixed(2)}</span>
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              {/* Zusätzliche Informationen */}
+              {selectedForecast.weather && (
+                <div className="border-t pt-4">
+                  <h4 className="font-semibold text-gray-900 mb-2">Wettervorhersage</h4>
+                  <div className="flex items-center space-x-4 text-sm">
+                    <div className="flex items-center space-x-2">
+                      {getWeatherIcon(selectedForecast.weather)}
+                      <span className="text-gray-700">
+                        {getWeatherDescription(selectedForecast.weather.weatherCode)}
+                      </span>
+                    </div>
+                    <span className="text-gray-600">
+                      {selectedForecast.weather.temperature}°C
+                    </span>
+                    {selectedForecast.weather.precipitation > 0 && (
+                      <span className="text-gray-600">
+                        {selectedForecast.weather.precipitation}mm Regen
+                      </span>
+                    )}
+                  </div>
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+      </div>
+    )
+  }
+
+  const getWeatherDescription = (weatherCode: number): string => {
+    if (weatherCode >= 95) return 'Gewitter'
+    if (weatherCode >= 85) return 'Starker Schneefall'
+    if (weatherCode >= 71) return 'Schnee'
+    if (weatherCode >= 61) return 'Regen'
+    if (weatherCode >= 51) return 'Nieselregen'
+    if (weatherCode >= 45) return 'Nebel'
+    if (weatherCode >= 3) return 'Bedeckt'
+    if (weatherCode >= 1) return 'Teilweise bewölkt'
+    return 'Klar'
   }
 
   const getWeatherCodeIcon = (code: number) => {
@@ -550,7 +916,13 @@ export default function ForecastPage() {
                       Prognose: €{selectedForecast.forecastedRevenue.toFixed(0)}
                     </div>
                     {selectedForecast.actualRevenue && (
-                      <div className="text-lg text-gray-600">
+                      <div className={`text-lg font-semibold ${
+                        selectedForecast.actualRevenue > selectedForecast.forecastedRevenue 
+                          ? 'text-green-600' 
+                          : selectedForecast.actualRevenue < selectedForecast.forecastedRevenue
+                          ? 'text-red-600'
+                          : 'text-gray-600'
+                      }`}>
                         Tatsächlich: €{selectedForecast.actualRevenue.toFixed(0)}
                       </div>
                     )}
@@ -754,7 +1126,7 @@ export default function ForecastPage() {
         </div>
 
         {/* Forecast Summary */}
-        {forecastData && (
+        {forecastData && activeTab === 'forecast' && (
           <div className="grid gap-4 md:grid-cols-4">
             <Card>
               <CardHeader className="pb-2">
@@ -807,84 +1179,142 @@ export default function ForecastPage() {
           </div>
         )}
 
-        {/* Date Range Selector */}
-        <Card>
-          <CardHeader>
-            <CardTitle className="text-lg">Prognose-Zeitraum</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="space-y-4 sm:space-y-0 sm:flex sm:items-end sm:gap-4">
-              <div className="flex-1">
-                <Label htmlFor="startDate" className="text-sm">Von</Label>
-                <Input
-                  id="startDate"
-                  type="date"
-                  value={startDate}
-                  onChange={(e) => setStartDate(e.target.value)}
-                  className="w-full text-sm"
-                />
-              </div>
-              <div className="flex-1">
-                <Label htmlFor="endDate" className="text-sm">Bis</Label>
-                <Input
-                  id="endDate"
-                  type="date"
-                  value={endDate}
-                  onChange={(e) => setEndDate(e.target.value)}
-                  className="w-full text-sm"
-                />
-              </div>
-              <Button onClick={fetchForecastData} className="w-full sm:w-auto sm:mt-0">
-                <TrendingUp className="h-4 w-4 mr-2" />
-                Prognose aktualisieren
-              </Button>
-            </div>
-          </CardContent>
-        </Card>
+        {/* Forecast-Erklärung */}
+        {forecastData?.metadata?.explanation && activeTab === 'forecast' && (
+          <Card className="mt-6">
+            <CardHeader>
+              <CardTitle className="text-lg flex items-center">
+                <BarChart3 className="h-5 w-5 mr-2" />
+                Wie wird die Prognose berechnet?
+              </CardTitle>
+            </CardHeader>
+            <CardContent>
+              <p className="text-sm text-gray-700 leading-relaxed">
+                {forecastData.metadata.explanation}
+              </p>
+            </CardContent>
+          </Card>
+        )}
 
-        {/* View Toggle */}
+        {/* Tab Navigation */}
         <div className="flex space-x-2 bg-gray-100 p-1 rounded-lg w-fit">
           <button
-            onClick={() => setSelectedView('calendar')}
+            onClick={() => setActiveTab('forecast')}
             className={`px-4 py-2 rounded-md text-sm font-medium transition-colors ${
-              selectedView === 'calendar'
+              activeTab === 'forecast'
+                ? 'bg-white text-gray-900 shadow-sm'
+                : 'text-gray-600 hover:text-gray-900'
+            }`}
+          >
+            <TrendingUp className="h-4 w-4 mr-2 inline" />
+            Prognose (14 Tage)
+          </button>
+          <button
+            onClick={() => setActiveTab('past')}
+            className={`px-4 py-2 rounded-md text-sm font-medium transition-colors ${
+              activeTab === 'past'
                 ? 'bg-white text-gray-900 shadow-sm'
                 : 'text-gray-600 hover:text-gray-900'
             }`}
           >
             <Calendar className="h-4 w-4 mr-2 inline" />
-            Kalender
-          </button>
-          <button
-            onClick={() => setSelectedView('chart')}
-            className={`px-4 py-2 rounded-md text-sm font-medium transition-colors ${
-              selectedView === 'chart'
-                ? 'bg-white text-gray-900 shadow-sm'
-                : 'text-gray-600 hover:text-gray-900'
-            }`}
-          >
-            <BarChart3 className="h-4 w-4 mr-2 inline" />
-            Diagramm
+            Vergangenheit
           </button>
         </div>
 
-        {/* Forecast Display */}
-        <Card>
-          <CardHeader>
-            <CardTitle className="text-lg">
-              {selectedView === 'calendar' ? 'Kalender-Ansicht' : 'Diagramm-Ansicht'}
-            </CardTitle>
-            <CardDescription>
-              {selectedView === 'calendar' 
-                ? 'Tägliche Prognosen im Kalender-Format'
-                : 'Umsatz-Prognosen als Balkendiagramm'
-              }
-            </CardDescription>
-          </CardHeader>
-          <CardContent>
-            {selectedView === 'calendar' ? renderCalendarView() : renderChartView()}
-          </CardContent>
-        </Card>
+        {/* Forecast Tab Content */}
+        {activeTab === 'forecast' && (
+          <>
+            <Button onClick={fetchForecastData} className="w-full sm:w-auto">
+              <RefreshCw className="h-4 w-4 mr-2" />
+              Prognose aktualisieren
+            </Button>
+
+            {/* View Toggle */}
+            <div className="flex space-x-2 bg-gray-100 p-1 rounded-lg w-fit">
+              <button
+                onClick={() => setSelectedView('calendar')}
+                className={`px-4 py-2 rounded-md text-sm font-medium transition-colors ${
+                  selectedView === 'calendar'
+                    ? 'bg-white text-gray-900 shadow-sm'
+                    : 'text-gray-600 hover:text-gray-900'
+                }`}
+              >
+                <Calendar className="h-4 w-4 mr-2 inline" />
+                Kalender
+              </button>
+              <button
+                onClick={() => setSelectedView('chart')}
+                className={`px-4 py-2 rounded-md text-sm font-medium transition-colors ${
+                  selectedView === 'chart'
+                    ? 'bg-white text-gray-900 shadow-sm'
+                    : 'text-gray-600 hover:text-gray-900'
+                }`}
+              >
+                <BarChart3 className="h-4 w-4 mr-2 inline" />
+                Diagramm
+              </button>
+            </div>
+
+            {/* Forecast Display */}
+            <Card>
+              <CardHeader>
+                <CardTitle className="text-lg">
+                  {selectedView === 'calendar' ? 'Kalender-Ansicht' : 'Diagramm-Ansicht'}
+                </CardTitle>
+                <CardDescription>
+                  {selectedView === 'calendar' 
+                    ? 'Tägliche Prognosen für die nächsten 14 Tage'
+                    : 'Umsatz-Prognosen als Balkendiagramm'
+                  }
+                </CardDescription>
+              </CardHeader>
+              <CardContent>
+                {selectedView === 'calendar' ? renderCalendarView() : renderChartView()}
+              </CardContent>
+            </Card>
+          </>
+        )}
+
+        {/* Past Forecasts Tab Content */}
+        {activeTab === 'past' && (
+          <Card>
+            <CardHeader>
+              <div className="flex items-center justify-between">
+                <div>
+                  <CardTitle className="text-lg">Vergangene Prognosen</CardTitle>
+                  <CardDescription>
+                    Vergleich von Prognose und tatsächlichem Umsatz
+                  </CardDescription>
+                </div>
+                <div className="flex items-center space-x-2">
+                  <Label htmlFor="month" className="text-sm">Monat:</Label>
+                  <Input
+                    id="month"
+                    type="month"
+                    value={selectedMonth}
+                    onChange={(e) => setSelectedMonth(e.target.value)}
+                    className="w-auto text-sm"
+                  />
+                </div>
+              </div>
+            </CardHeader>
+            <CardContent>
+              {isLoadingPast ? (
+                <div className="flex items-center justify-center py-12">
+                  <RefreshCw className="h-6 w-6 animate-spin text-blue-600" />
+                  <span className="ml-2 text-gray-600">Lade vergangene Prognosen...</span>
+                </div>
+              ) : pastForecasts.length === 0 ? (
+                <div className="text-center py-12 text-gray-500">
+                  Keine vergangenen Prognosen für diesen Monat gefunden.
+                </div>
+              ) : (
+                renderPastForecastsCalendar()
+              )}
+            </CardContent>
+          </Card>
+        )}
 
         {/* Weather Integration Note */}
         <Card className="bg-green-50 border-green-200">
@@ -907,8 +1337,11 @@ export default function ForecastPage() {
         </Card>
       </div>
 
-      {/* Hourly Detail Modal */}
-      {renderHourlyDetail()}
+      {/* Forecast Detail Modal */}
+      {activeTab === 'forecast' && renderForecastDetail()}
+      
+      {/* Hourly Detail Modal (nur für Vergangenheit) */}
+      {activeTab === 'past' && renderHourlyDetail()}
     </div>
   )
 }
