@@ -26,6 +26,10 @@ interface SumUpTransaction {
   payouts_total?: number
   refunded_amount?: number
   client_transaction_id?: string
+  tip_amount?: number
+  tip?: number | string
+  tips?: { amount?: number; tip_amount?: number; total?: number } | number | string
+  vat_amount?: number
 }
 
 async function fetchAllSumUpTransactions(
@@ -863,7 +867,7 @@ export async function POST(request: NextRequest) {
         console.log(`🔍 Transaction IDs to check:`, transactionIds)
         
         // Check for orphaned transactions (without organization_id) first
-        const { data: orphanedTransactions, error: orphanCheckError } = await supabase
+        const { data: orphanedTransactions, error: _orphanCheckError } = await supabase
           .from('payment_transactions')
           .select('transaction_id')
           .is('organization_id', null)
