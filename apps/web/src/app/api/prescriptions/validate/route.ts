@@ -15,9 +15,9 @@ const ALLOWED_MIME_TYPES = ['image/jpeg', 'image/png', 'image/jpg', 'application
 export async function POST(request: NextRequest) {
   // Log collection setup - declare outside try/catch
   const logs: string[] = []
-  let originalLog: typeof console.log
-  let originalError: typeof console.error
-  let originalWarn: typeof console.warn
+  let originalLog: typeof console.log | undefined
+  let originalError: typeof console.error | undefined
+  let originalWarn: typeof console.warn | undefined
   
   try {
     // Check authorization
@@ -108,17 +108,17 @@ export async function POST(request: NextRequest) {
     console.log = (...args: any[]) => {
       const message = args.map(a => typeof a === 'object' ? JSON.stringify(a, null, 2) : String(a)).join(' ')
       logs.push(`[LOG] ${message}`)
-      originalLog(...args)
+      originalLog?.(...args)
     }
     console.error = (...args: any[]) => {
       const message = args.map(a => typeof a === 'object' ? JSON.stringify(a, null, 2) : String(a)).join(' ')
       logs.push(`[ERROR] ${message}`)
-      originalError(...args)
+      originalError?.(...args)
     }
     console.warn = (...args: any[]) => {
       const message = args.map(a => typeof a === 'object' ? JSON.stringify(a, null, 2) : String(a)).join(' ')
       logs.push(`[WARN] ${message}`)
-      originalWarn(...args)
+      originalWarn?.(...args)
     }
 
     try {
@@ -245,16 +245,26 @@ export async function POST(request: NextRequest) {
       })
     } finally {
       // Restore console methods
-      console.log = originalLog
-      console.error = originalError
-      console.warn = originalWarn
+      if (originalLog !== undefined) {
+        console.log = originalLog
+      }
+      if (originalError !== undefined) {
+        console.error = originalError
+      }
+      if (originalWarn !== undefined) {
+        console.warn = originalWarn
+      }
     }
   } catch (error) {
     // Try to restore console if it was overridden
     try {
-      if (typeof originalLog !== 'undefined') {
+      if (originalLog !== undefined) {
         console.log = originalLog
+      }
+      if (originalError !== undefined) {
         console.error = originalError
+      }
+      if (originalWarn !== undefined) {
         console.warn = originalWarn
       }
     } catch {}
