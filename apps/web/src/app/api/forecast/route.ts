@@ -49,8 +49,6 @@ export async function GET(request: NextRequest) {
   try {
     const { searchParams } = new URL(request.url)
     const organizationId = searchParams.get('organizationId')
-    const startDate = searchParams.get('startDate')
-    const endDate = searchParams.get('endDate')
 
     if (!organizationId) {
       return NextResponse.json({ error: 'Organization ID required' }, { status: 400 })
@@ -600,9 +598,9 @@ async function saveForecastWeatherToHistory(organizationId: string, weatherData:
 function generateForecast(
   startDate: string,
   endDate: string,
-  baseline: number,
+  _baseline: number,
   trends: any,
-  seasonalFactors: { [weekday: number]: number },
+  _seasonalFactors: { [weekday: number]: number },
   historicalData: HistoricalData[],
   weatherData: WeatherData[]
 ): ForecastData[] {
@@ -700,7 +698,7 @@ async function saveForecasts(organizationId: string, forecast: ForecastData[], w
   }
 }
 
-async function updateForecastsWithActuals(organizationId: string, startDate: string, endDate: string) {
+async function updateForecastsWithActuals(organizationId: string, startDate: string, _endDate: string) {
   try {
     const today = new Date()
     today.setHours(0, 0, 0, 0)
