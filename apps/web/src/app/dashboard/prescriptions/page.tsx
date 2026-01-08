@@ -10,7 +10,6 @@ import {
   XCircle,
   AlertCircle,
   ArrowLeft,
-  FileImage,
   Loader2,
   AlertTriangle
 } from 'lucide-react'

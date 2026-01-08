@@ -3,7 +3,7 @@
 import { useState, useEffect } from 'react'
 import { createClient } from '@supabase/supabase-js'
 import { useRouter } from 'next/navigation'
-import { Calendar, Clock, TrendingUp, AlertCircle, Download, ArrowLeft } from 'lucide-react'
+import { Calendar, Clock, TrendingUp, AlertCircle, ArrowLeft } from 'lucide-react'
 import Link from 'next/link'
 
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!

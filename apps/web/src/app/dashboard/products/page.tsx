@@ -17,7 +17,6 @@ import {
   RefreshCw,
   Filter,
   ChefHat,
-  Package,
   Link as LinkIcon
 } from 'lucide-react'
 
