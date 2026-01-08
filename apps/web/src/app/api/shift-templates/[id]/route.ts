@@ -7,9 +7,10 @@ const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY!
 // DELETE /api/shift-templates/[id] - Delete a template
 export async function DELETE(
   request: NextRequest,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
   try {
+    const { id } = await params
     const authHeader = request.headers.get('authorization')
     
     if (!authHeader || !authHeader.startsWith('Bearer ')) {
@@ -58,7 +59,7 @@ export async function DELETE(
     const { data: template, error: templateError } = await supabase
       .from('shift_templates')
       .select('id, organization_id')
-      .eq('id', params.id)
+      .eq('id', id)
       .single()
 
     if (templateError || !template) {
@@ -79,7 +80,7 @@ export async function DELETE(
     const { error: deleteError } = await supabase
       .from('shift_templates')
       .delete()
-      .eq('id', params.id)
+      .eq('id', id)
 
     if (deleteError) {
       console.error('Error deleting template:', deleteError)
