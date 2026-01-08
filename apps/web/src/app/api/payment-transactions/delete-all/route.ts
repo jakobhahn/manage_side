@@ -52,11 +52,11 @@ export async function DELETE(request: NextRequest) {
     }
 
     // Delete all transactions for this organization
-    const { error: deleteError, count } = await supabase
+    const { data: deletedData, error: deleteError, count } = await supabase
       .from('payment_transactions')
       .delete()
       .eq('organization_id', userData.organization_id)
-      .select('id', { count: 'exact', head: true })
+      .select('id')
 
     if (deleteError) {
       console.error('Error deleting transactions:', deleteError)
@@ -71,7 +71,7 @@ export async function DELETE(request: NextRequest) {
     return NextResponse.json({
       success: true,
       message: `All transactions deleted successfully`,
-      deletedCount: count || 0
+      deletedCount: deletedData?.length || count || 0
     })
   } catch (error) {
     console.error('Delete all transactions error:', error)
