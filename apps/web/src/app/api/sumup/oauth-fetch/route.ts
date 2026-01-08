@@ -6,7 +6,7 @@ const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!
 const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY!
 
 // Decrypt function for OAuth tokens
-function decrypt(encryptedData: string, key: string, salt: string): string {
+function decrypt(encryptedData: string, key: string, _salt: string): string {
   const keyBuffer = Buffer.from(key, 'hex')
   const saltBuffer = Buffer.from(salt, 'hex')
   const encryptedBuffer = Buffer.from(encryptedData, 'hex')
