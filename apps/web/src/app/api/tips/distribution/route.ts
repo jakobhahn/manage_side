@@ -204,7 +204,7 @@ export async function GET(request: NextRequest) {
       
       // Debug logging
       console.log(`[Tips Distribution] Date ${dateStr}: Total Hours: ${totalHours.toFixed(2)}, Total Tips: ${totalTips.toFixed(2)}, Employees: ${employeeHours.size}`)
-      employeeHours.forEach((data, userId) => {
+      employeeHours.forEach((data, _userId) => {
         console.log(`  - User ${data.userName}: ${data.hours.toFixed(2)} hours`)
       })
       if (totalTips > 0 && employeeHours.size > 0) {

@@ -51,7 +51,7 @@ export default function MonthlySummaryPage() {
     try {
       const { data: { session } } = await supabase.auth.getSession()
       if (!session) {
-        router.push('/auth/login')
+        router.push('/login' as any)
         return
       }
 

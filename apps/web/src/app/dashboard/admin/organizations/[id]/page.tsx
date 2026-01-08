@@ -200,7 +200,7 @@ export default function OrganizationDetailPage() {
       // Populate modules
       const modulesMap: Record<string, { is_active: boolean; expires_at: string }> = {}
       AVAILABLE_MODULES.forEach(module => {
-        const subscription = org.module_subscriptions?.find(m => m.module_name === module.name)
+        const subscription = org.module_subscriptions?.find((m: any) => m.module_name === module.name)
         modulesMap[module.name] = {
           is_active: subscription?.is_active ?? false,
           expires_at: subscription?.expires_at || ''

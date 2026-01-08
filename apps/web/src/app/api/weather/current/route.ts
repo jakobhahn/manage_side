@@ -140,10 +140,6 @@ export async function GET(request: NextRequest) {
       requestedDate.setHours(0, 0, 0, 0)
       const daysDiff = Math.ceil((requestedDate.getTime() - today.getTime()) / (1000 * 60 * 60 * 24))
       
-      // Open-Meteo supports up to 16 days forecast
-      // We need to fetch enough days to include the requested date
-      const forecastDays = Math.max(1, Math.min(16, daysDiff + 1))
-      
       // Always fetch at least 16 days to ensure we have data for all forecast days
       // Fetch hourly data and daily sunrise/sunset for the requested date
       const url = `https://api.open-meteo.com/v1/forecast?latitude=${latitude}&longitude=${longitude}&hourly=temperature_2m,precipitation,weather_code&daily=sunrise,sunset&timezone=Europe%2FBerlin&forecast_days=16`

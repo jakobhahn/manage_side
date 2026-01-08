@@ -8,6 +8,7 @@ import { Clock, LogIn, LogOut, CheckCircle, AlertCircle, ArrowLeft, Settings, Lo
 
 interface TimeClockEntry {
   id: string
+  user_id: string
   clock_in: string
   clock_out: string | null
   shift_id: string | null
@@ -24,6 +25,11 @@ interface TimeClockEntry {
     end_time: string
     position: string | null
     status: string
+  }
+  user?: {
+    id: string
+    name: string
+    email: string
   }
 }
 
@@ -546,7 +552,7 @@ export default function TimeClockPage() {
               <div className="flex items-center justify-between">
                 <div>
                   <p className="text-sm font-medium text-gray-900">
-                    {nextShift.position ? (typeof nextShift.position === 'object' && nextShift.position !== null ? nextShift.position.name : nextShift.position) : 'Schicht'}
+                    {nextShift.position || 'Schicht'}
                   </p>
                   <p className="text-sm text-gray-600 mt-1">
                     {formatDate(nextShift.start_time)} - {formatTime(nextShift.start_time)} bis {formatTime(nextShift.end_time)}
@@ -594,7 +600,7 @@ export default function TimeClockPage() {
                             Geplante Schicht: {formatTime(activeEntry.shift.start_time)} - {formatTime(activeEntry.shift.end_time)}
                           </p>
                           {activeEntry.shift.position && (
-                            <p className="text-xs text-blue-600 mt-1">Position: {typeof activeEntry.shift.position === 'object' && activeEntry.shift.position !== null ? activeEntry.shift.position.name : activeEntry.shift.position}</p>
+                            <p className="text-xs text-blue-600 mt-1">Position: {activeEntry.shift.position}</p>
                           )}
                         </div>
                       )}
@@ -719,7 +725,7 @@ export default function TimeClockPage() {
                       </div>
                       {entry.shift && (
                         <p className="text-xs text-gray-500 mt-1 ml-5">
-                          Schicht: {entry.shift.position ? (typeof entry.shift.position === 'object' && entry.shift.position !== null ? entry.shift.position.name : entry.shift.position) : 'Schicht'} ({formatTime(entry.shift.start_time)} - {formatTime(entry.shift.end_time)})
+                          Schicht: {entry.shift.position || 'Schicht'} ({formatTime(entry.shift.start_time)} - {formatTime(entry.shift.end_time)})
                         </p>
                       )}
                     </div>

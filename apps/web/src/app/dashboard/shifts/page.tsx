@@ -24,7 +24,6 @@ interface Shift {
   start_time: string
   end_time: string
   position_id: string | null
-  position: string | null // Legacy field
   status: 'scheduled' | 'confirmed' | 'completed' | 'cancelled'
   hourly_rate: number | null
   notes: string | null
@@ -129,7 +128,6 @@ interface TimeClockEntry {
     id: string
     start_time: string
     end_time: string
-    position: string | null
   }
 }
 
@@ -137,7 +135,7 @@ export default function ShiftsPage() {
   const [shifts, setShifts] = useState<Shift[]>([])
   const [organizationUsers, setOrganizationUsers] = useState<OrganizationUser[]>([])
   const [positions, setPositions] = useState<Position[]>([])
-  const [userPositions, setUserPositions] = useState<UserPosition[]>([]) // All position assignments
+  const [userPositions, setUserPositions] = useState<Array<{ user_id: string; position_id: string }>>([]) // All position assignments
   const [user, setUser] = useState<UserData | null>(null)
   const [timeClockEntries, setTimeClockEntries] = useState<TimeClockEntry[]>([])
   const [vacationRequests, setVacationRequests] = useState<Array<{
@@ -642,7 +640,7 @@ export default function ShiftsPage() {
       start_time: startDateTime,
       end_time: endDateTime,
       position_id: shift.position_id || '',
-      position: shift.position || '',
+      position: typeof shift.position === 'string' ? shift.position : '',
       notes: shift.notes || '',
       status: shift.status === 'scheduled' || shift.status === 'confirmed' ? shift.status : 'scheduled',
     })
@@ -1869,7 +1867,7 @@ export default function ShiftsPage() {
         dropMinute = Math.floor((totalMinutes % 60) / 15) * 15
       }
       
-      setDropTarget({ date, hour: dropHour, minute: dropMinute })
+      setDropTarget({ date, hour: dropHour ?? 0, minute: dropMinute })
       // We'll handle the update in dragEnd
     }
   }
@@ -2375,8 +2373,8 @@ export default function ShiftsPage() {
                     const stats = getEmployeeStats(employee.id)
                     // Get all positions for this employee from user_positions
                     const employeePositions = userPositions
-                      .filter(up => up.user_id === employee.id && up.position)
-                      .map(up => up.position)
+                      .filter(up => up.user_id === employee.id && up.position_id)
+                      .map(up => positions.find(p => p.id === up.position_id))
                       .filter((p): p is Position => p !== null && p !== undefined)
                     // Fallback to legacy position_id if no user_positions exist
                     const legacyPosition = employee.position_id ? positions.find(p => p.id === employee.position_id) : null
@@ -2949,8 +2947,8 @@ export default function ShiftsPage() {
                             const userShifts = shifts.filter(s => s.user_id === employee.id)
                             // Get employee positions
                             const employeePositions = userPositions
-                              .filter(up => up.user_id === employee.id && up.position)
-                              .map(up => up.position)
+                              .filter(up => up.user_id === employee.id && up.position_id)
+                              .map(up => positions.find(p => p.id === up.position_id))
                               .filter((p): p is Position => p !== null && p !== undefined)
                             // Fallback to legacy position_id
                             const legacyPosition = employee.position_id ? positions.find(p => p.id === employee.position_id) : null
@@ -2986,7 +2984,6 @@ export default function ShiftsPage() {
                                   return (
                                     <div
                                       key={dayIndex}
-                                      className="border-r border-gray-200 last:border-r-0 relative bg-white hover:bg-gray-50 transition-colors"
                                       onDrop={(e) => {
                                         e.preventDefault()
                                         handleTimeSlotDrop(e, date)
@@ -3176,7 +3173,7 @@ export default function ShiftsPage() {
                                       e.preventDefault()
                                       handleTimeSlotDrop(e, date)
                                     }}
-                                    onDragOver={(e) => handleTimeSlotDragOver(e, date)}
+                                    onDragOver={handleTimeSlotDragOver}
                                     onClick={(e) => {
                                       if (user?.role === 'manager' || user?.role === 'owner') {
                                         // If copying mode is active, paste the shift (as open shift)
