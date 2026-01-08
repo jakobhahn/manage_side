@@ -1,5 +1,5 @@
 {
-  "buildCommand": "if [ \"$VERCEL_ENV\" = \"production\" ]; then if ! command -v supabase &> /dev/null; then npm install -g supabase; fi && export SUPABASE_ACCESS_TOKEN=\"$SUPABASE_ACCESS_TOKEN\" && export SUPABASE_DB_PASSWORD=\"$SUPABASE_DB_PASSWORD\" && supabase link --project-ref \"$SUPABASE_PROJECT_REF\" && supabase db push --password \"$SUPABASE_DB_PASSWORD\"; fi && pnpm run build",
+  "buildCommand": "[ \"$VERCEL_ENV\" = \"production\" ] && (command -v supabase || npm i -g supabase) && supabase link --project-ref \"$SUPABASE_PROJECT_REF\" && supabase db push --password \"$SUPABASE_DB_PASSWORD\" || true; pnpm run build",
   "outputDirectory": "apps/web/.next",
   "installCommand": "pnpm install",
   "framework": "nextjs",
