@@ -35,7 +35,7 @@ fi
 
 # Build the Next.js application
 echo "🏗️ Building Next.js application..."
-npm run build
+pnpm run build
 
 echo "🎉 Deployment process completed successfully!"
 

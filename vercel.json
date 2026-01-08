@@ -1,7 +1,7 @@
 {
   "buildCommand": "./scripts/migrate-and-build.sh",
   "outputDirectory": "apps/web/.next",
-  "installCommand": "npm install",
+  "installCommand": "pnpm install",
   "framework": "nextjs",
   "functions": {
     "apps/web/src/app/api/**/*.ts": {
