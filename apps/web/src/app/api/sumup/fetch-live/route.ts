@@ -8,7 +8,7 @@ const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY!
 // Decrypt function for API credentials
 function decrypt(encryptedData: string, key: string, _salt: string): string {
   const keyBuffer = Buffer.from(key, 'hex')
-  const saltBuffer = Buffer.from(salt, 'hex')
+  const saltBuffer = Buffer.from(_salt, 'hex')
   const encryptedBuffer = Buffer.from(encryptedData, 'hex')
   
   const decipher = crypto.createDecipheriv('aes-256-cbc', keyBuffer, saltBuffer)
