@@ -75,7 +75,6 @@ export default function OrganizationDetailPage() {
   const params = useParams()
   const organizationId = params.id as string
   const [organization, setOrganization] = useState<Organization | null>(null)
-  const [user, setUser] = useState<User | null>(null)
   const [isLoading, setIsLoading] = useState(true)
   const [isSaving, setIsSaving] = useState(false)
   const [error, setError] = useState<string | null>(null)
