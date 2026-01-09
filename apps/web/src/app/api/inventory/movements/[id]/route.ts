@@ -191,7 +191,6 @@ export async function PUT(
     }
 
     // If item_id is being changed, verify new item exists
-    const targetItemId = item_id || existingMovement.item_id
     if (item_id && item_id !== existingMovement.item_id) {
       const { data: item, error: itemError } = await supabase
         .from('inventory_items')
