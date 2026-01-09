@@ -143,7 +143,7 @@ export async function GET(request: NextRequest) {
         return acc
       }, {} as Record<string, any>)
 
-      processedData = Object.values(grouped).map(group => ({
+      processedData = Object.values(grouped).map((group: any) => ({
         ...group,
         avg_temperature: Math.round(group.avg_temperature * 10) / 10,
         avg_humidity: Math.round(group.avg_humidity),
