@@ -6,7 +6,6 @@ import { useRouter, useParams } from 'next/navigation'
 import Link from 'next/link'
 import { 
   ArrowLeft,
-  Settings,
   LogOut,
   Loader2,
   Save,
