@@ -287,7 +287,7 @@ export default function MonthlySummaryPage() {
                   </tr>
                 </thead>
                 <tbody className="bg-white divide-y divide-gray-200">
-                  {Object.entries(grouped).map(([userId, items]) => {
+                  {Object.entries(grouped).map(([_userId, items]) => {
                     const employeeTotals = calculateTotals(items)
                     const firstItem = items[0]
                     return (

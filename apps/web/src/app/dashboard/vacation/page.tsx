@@ -101,7 +101,7 @@ export default function VacationPage() {
     }
   }
 
-  const fetchRequests = async (token: string, userId: string, role: string) => {
+  const fetchRequests = async (token: string, _userId: string, role: string) => {
     try {
       // Staff only see their own requests, managers/owners see all organization requests
       const url = role === 'staff' 

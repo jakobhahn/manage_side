@@ -10,7 +10,7 @@ import { PrescriptionData } from '@hans/types'
  * Extract prescription data from image using OCR
  * This is a placeholder implementation - replace with actual OCR service
  */
-export async function runOcrExtraction(imageBuffer: Buffer): Promise<Partial<PrescriptionData>> {
+export async function runOcrExtraction(_imageBuffer: Buffer): Promise<Partial<PrescriptionData>> {
   // TODO: Implement actual OCR using Tesseract.js or cloud service
   // For now, return empty structure with OCR source
   
@@ -27,7 +27,7 @@ export async function runOcrExtraction(imageBuffer: Buffer): Promise<Partial<Pre
   // 5. Return structured data with confidence scores
   
   // Example regex patterns for Muster 13 fields:
-  const patterns = {
+  const _patterns = {
     icd10: /ICD-10[:\s]+([A-Z]\d{2}\.\d)/i,
     diagnosisGroup: /Diagnosegruppe[:\s]+(\d+)/i,
     issueDate: /Ausstellungsdatum[:\s]+(\d{2}\.\d{2}\.\d{4})/i,
@@ -49,7 +49,7 @@ export async function runOcrExtraction(imageBuffer: Buffer): Promise<Partial<Pre
  * Extract text from image using OCR
  * Placeholder - implement with actual OCR library
  */
-async function extractTextFromImage(imageBuffer: Buffer): Promise<string> {
+async function _extractTextFromImage(_imageBuffer: Buffer): Promise<string> {
   // TODO: Implement with Tesseract.js
   // const { createWorker } = require('tesseract.js')
   // const worker = await createWorker('deu')
@@ -63,7 +63,7 @@ async function extractTextFromImage(imageBuffer: Buffer): Promise<string> {
 /**
  * Extract fields from OCR text using regex patterns
  */
-function extractFieldsFromText(text: string): Partial<PrescriptionData> {
+function _extractFieldsFromText(text: string): Partial<PrescriptionData> {
   const data: Partial<PrescriptionData> = {
     rawSource: 'OCR',
     confidence: {}

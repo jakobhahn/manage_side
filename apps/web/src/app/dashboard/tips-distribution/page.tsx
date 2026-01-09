@@ -12,7 +12,6 @@ import {
   Settings,
   LogOut,
   DollarSign,
-  Users,
   Clock,
   ChevronLeft,
   ChevronRight
@@ -100,7 +99,7 @@ export default function TipsDistributionPage() {
         throw new Error('Failed to fetch user data')
       }
 
-      const userData = await response.json()
+      await response.json()
 
       // Fetch distribution data
       await fetchDistribution(session.access_token)
@@ -166,7 +165,7 @@ export default function TipsDistributionPage() {
     }).format(amount)
   }
 
-  const formatDate = (dateString: string) => {
+  const _formatDate = (dateString: string) => {
     const date = new Date(dateString)
     return date.toLocaleDateString('de-DE', {
       weekday: 'short',

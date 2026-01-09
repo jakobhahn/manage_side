@@ -81,7 +81,7 @@ export default function TipsPage() {
         throw new Error('Failed to fetch user data')
       }
 
-      const userData = await response.json()
+      await response.json()
 
       // Fetch tips data
       await fetchTips(session.access_token)

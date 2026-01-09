@@ -63,7 +63,7 @@ interface CreateUserData {
 export default function UsersPage() {
   const [users, setUsers] = useState<User[]>([])
   const [positions, setPositions] = useState<Position[]>([])
-  const [userPositions, setUserPositions] = useState<UserPosition[]>([])
+  const [_userPositions, setUserPositions] = useState<UserPosition[]>([])
   const [isLoading, setIsLoading] = useState(true)
   const [isCreating, setIsCreating] = useState(false)
   const [error, setError] = useState<string | null>(null)

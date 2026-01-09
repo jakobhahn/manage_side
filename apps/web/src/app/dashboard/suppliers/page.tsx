@@ -7,7 +7,6 @@ import Link from 'next/link'
 import { 
   Plus, 
   Building2, 
-  Edit,
   Trash2,
   ArrowLeft,
   Settings,
