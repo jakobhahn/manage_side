@@ -3027,9 +3027,6 @@ export default function ShiftsPage() {
                                           }
                                         }
                                       }}
-                                      className={`border-r border-gray-200 last:border-r-0 relative bg-white hover:bg-gray-50 transition-colors ${
-                                        copyingShift ? 'cursor-copy hover:bg-blue-50 border-blue-200' : ''
-                                      }`}
                                     >
                                       {/* Render Vacation (full day) */}
                                       {employeeVacation && (
@@ -3182,7 +3179,7 @@ export default function ShiftsPage() {
                                       e.preventDefault()
                                       handleTimeSlotDrop(e, date)
                                     }}
-                                    onDragOver={(e) => handleTimeSlotDragOver(e, date)}
+                                    onDragOver={handleTimeSlotDragOver}
                                     onClick={(e) => {
                                       if (user?.role === 'manager' || user?.role === 'owner') {
                                         // If copying mode is active, paste the shift (as open shift)
