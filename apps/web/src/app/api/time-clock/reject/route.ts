@@ -13,7 +13,7 @@ export async function POST(request: NextRequest) {
 
     const token = authHeader.split(' ')[1]
     const body = await request.json()
-    const { entryId, reason } = body
+    const { entryId, reason: _reason } = body
 
     if (!entryId) {
       return NextResponse.json({ error: { message: 'Entry ID required' } }, { status: 400 })
