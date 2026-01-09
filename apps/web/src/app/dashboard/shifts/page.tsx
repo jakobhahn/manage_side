@@ -85,6 +85,23 @@ interface ShiftFormData {
   status: 'scheduled' | 'confirmed'
 }
 
+interface UserPosition {
+  id: string
+  user_id: string
+  position_id: string
+  position?: {
+    id: string
+    name: string
+    color: string | null
+    description: string | null
+  }
+  user?: {
+    id: string
+    name: string
+    email: string
+  }
+}
+
 interface ShiftTemplateItem {
   id?: string
   day_of_week: number // 0 = Sunday, 6 = Saturday
