@@ -260,7 +260,11 @@ export async function POST(request: NextRequest) {
     try {
       if (typeof originalLog !== 'undefined') {
         console.log = originalLog
+      }
+      if (typeof originalError !== 'undefined') {
         console.error = originalError
+      }
+      if (typeof originalWarn !== 'undefined') {
         console.warn = originalWarn
       }
     } catch {}
