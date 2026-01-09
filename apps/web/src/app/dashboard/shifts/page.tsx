@@ -491,17 +491,6 @@ export default function ShiftsPage() {
     })
   }
 
-  const _formatDateTime = (dateString: string) => {
-    const date = new Date(dateString)
-    return date.toLocaleString('de-DE', {
-      day: '2-digit',
-      month: '2-digit',
-      year: 'numeric',
-      hour: '2-digit',
-      minute: '2-digit'
-    })
-  }
-
   const getShiftStatus = (shift: Shift) => {
     const now = new Date()
     const startDate = new Date(shift.start_time)
@@ -1448,15 +1437,6 @@ export default function ShiftsPage() {
     return week
   }
 
-  const _getShiftsForDateAndHour = (date: Date, hour: number): Shift[] => {
-    return shifts.filter(shift => {
-      const shiftStart = new Date(shift.start_time)
-      const shiftDate = new Date(shiftStart.getFullYear(), shiftStart.getMonth(), shiftStart.getDate())
-      const targetDate = new Date(date.getFullYear(), date.getMonth(), date.getDate())
-      
-      return shiftDate.getTime() === targetDate.getTime() && shiftStart.getHours() === hour
-    })
-  }
 
   const getShiftsForDate = (date: Date): Shift[] => {
     return shifts.filter(shift => {
@@ -1484,14 +1464,6 @@ export default function ShiftsPage() {
     })
   }
 
-  const _handleTimeSlotClick = (date: Date, hour: number, minutes: number = 0) => {
-    if (user?.role !== 'manager' && user?.role !== 'owner') return
-    
-    setSelectedTimeSlot({ date, hour })
-    
-    // Set default times - start at the selected quarter hour
-    const startDateTime = new Date(date)
-    startDateTime.setHours(hour, minutes, 0, 0)
     const endDateTime = new Date(date)
     endDateTime.setHours(hour, minutes, 0, 0)
     endDateTime.setHours(endDateTime.getHours() + 4) // Default 4-hour shift
@@ -1877,14 +1849,6 @@ export default function ShiftsPage() {
     e.dataTransfer.dropEffect = 'move'
   }
 
-  const _calculateTimeFromPosition = (_date: Date, y: number): { hour: number, minute: number } => {
-    // Each hour is 80px tall, so calculate which hour and minute
-    const hourHeight = 80
-    const totalMinutes = Math.floor((y / hourHeight) * 60)
-    const hour = Math.floor(totalMinutes / 60)
-    const minute = Math.floor((totalMinutes % 60) / 15) * 15 // Snap to 15-minute intervals
-    return { hour: Math.max(0, Math.min(23, hour)), minute: Math.max(0, Math.min(45, minute)) }
-  }
 
   if (isLoading) {
     return (
