@@ -26,6 +26,10 @@ interface SumUpTransaction {
   payouts_total?: number
   refunded_amount?: number
   client_transaction_id?: string
+  tip_amount?: number
+  tip?: number
+  tips?: number
+  vat_amount?: number
 }
 
 async function fetchAllSumUpTransactions(
