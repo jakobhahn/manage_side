@@ -134,7 +134,6 @@ export default function OrganizationDetailPage() {
       }
 
       const userData = await userResponse.json()
-      setUser(userData)
 
       if (userData.role !== 'super_admin') {
         setError('Nur Super-Administratoren haben Zugriff auf diese Seite.')
