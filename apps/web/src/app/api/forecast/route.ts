@@ -600,9 +600,9 @@ async function saveForecastWeatherToHistory(organizationId: string, weatherData:
 function generateForecast(
   startDate: string,
   endDate: string,
-  baseline: number,
+  _baseline: number,
   trends: any,
-  seasonalFactors: { [weekday: number]: number },
+  _seasonalFactors: { [weekday: number]: number },
   historicalData: HistoricalData[],
   weatherData: WeatherData[]
 ): ForecastData[] {
