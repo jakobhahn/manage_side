@@ -869,7 +869,7 @@ export async function POST(request: NextRequest) {
         console.log(`🔍 Transaction IDs to check:`, transactionIds)
         
         // Check for orphaned transactions (without organization_id) first
-        const { data: orphanedTransactions, error: orphanCheckError } = await supabase
+        const { data: orphanedTransactions, error: _orphanCheckError } = await supabase
           .from('payment_transactions')
           .select('transaction_id')
           .is('organization_id', null)
