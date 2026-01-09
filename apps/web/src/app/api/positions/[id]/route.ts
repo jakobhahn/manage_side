@@ -7,9 +7,10 @@ const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY!
 // GET /api/positions/[id] - Get a specific position
 export async function GET(
   request: NextRequest,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
   try {
+    const { id } = await params
     const authHeader = request.headers.get('authorization')
     
     if (!authHeader || !authHeader.startsWith('Bearer ')) {
@@ -50,7 +51,7 @@ export async function GET(
     const { data: position, error: positionError } = await supabase
       .from('positions')
       .select('*')
-      .eq('id', params.id)
+      .eq('id', id)
       .eq('organization_id', userData.organization_id)
       .single()
 
@@ -74,9 +75,10 @@ export async function GET(
 // PUT /api/positions/[id] - Update a position
 export async function PUT(
   request: NextRequest,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
   try {
+    const { id } = await params
     const body = await request.json()
     const { name, description, color, is_active } = body
 
@@ -155,7 +157,7 @@ export async function PUT(
     const { data: position, error: positionError } = await supabase
       .from('positions')
       .update(updateData)
-      .eq('id', params.id)
+      .eq('id', id)
       .eq('organization_id', userData.organization_id)
       .select()
       .single()
@@ -194,9 +196,10 @@ export async function PUT(
 // DELETE /api/positions/[id] - Delete a position
 export async function DELETE(
   request: NextRequest,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
   try {
+    const { id } = await params
     const authHeader = request.headers.get('authorization')
     
     if (!authHeader || !authHeader.startsWith('Bearer ')) {
@@ -245,7 +248,7 @@ export async function DELETE(
     const { error: deleteError } = await supabase
       .from('positions')
       .delete()
-      .eq('id', params.id)
+      .eq('id', id)
       .eq('organization_id', userData.organization_id)
 
     if (deleteError) {
