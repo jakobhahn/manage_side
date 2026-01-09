@@ -15,9 +15,9 @@ const ALLOWED_MIME_TYPES = ['image/jpeg', 'image/png', 'image/jpg', 'application
 export async function POST(request: NextRequest) {
   // Log collection setup - declare outside try/catch
   const logs: string[] = []
-  let originalLog: typeof console.log
-  let originalError: typeof console.error
-  let originalWarn: typeof console.warn
+  let originalLog: typeof console.log | undefined = undefined
+  let originalError: typeof console.error | undefined = undefined
+  let originalWarn: typeof console.warn | undefined = undefined
   
   try {
     // Check authorization
@@ -245,9 +245,15 @@ export async function POST(request: NextRequest) {
       })
     } finally {
       // Restore console methods
-      console.log = originalLog
-      console.error = originalError
-      console.warn = originalWarn
+      if (typeof originalLog !== 'undefined') {
+        console.log = originalLog
+      }
+      if (typeof originalError !== 'undefined') {
+        console.error = originalError
+      }
+      if (typeof originalWarn !== 'undefined') {
+        console.warn = originalWarn
+      }
     }
   } catch (error) {
     // Try to restore console if it was overridden
