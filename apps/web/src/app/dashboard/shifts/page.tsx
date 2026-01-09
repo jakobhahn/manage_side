@@ -829,7 +829,7 @@ export default function ShiftsPage() {
         throw new Error(errorData.error?.message || `Failed to create template (status: ${response.status})`)
       }
 
-      const data = await response.json()
+      const _data = await response.json()
       
       // Refresh templates
       await fetchTemplates(session.access_token)
