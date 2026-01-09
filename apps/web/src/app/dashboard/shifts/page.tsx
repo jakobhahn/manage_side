@@ -24,7 +24,6 @@ interface Shift {
   start_time: string
   end_time: string
   position_id: string | null
-  position: string | null // Legacy field
   status: 'scheduled' | 'confirmed' | 'completed' | 'cancelled'
   hourly_rate: number | null
   notes: string | null
@@ -82,7 +81,6 @@ interface ShiftFormData {
   start_time: string
   end_time: string
   position_id: string // Empty string for no position
-  position: string // Legacy field
   notes: string
   status: 'scheduled' | 'confirmed'
 }
@@ -185,7 +183,6 @@ export default function ShiftsPage() {
     start_time: '',
     end_time: '',
     position_id: '',
-    position: '',
     notes: '',
     status: 'scheduled',
   })
@@ -571,7 +568,6 @@ export default function ShiftsPage() {
         start_time: startTime.toISOString(),
         end_time: adjustedEndTime.toISOString(),
         position_id: formData.position_id || null,
-        position: formData.position || null, // Legacy field
         notes: formData.notes || null,
         status: formData.status
       }
@@ -675,7 +671,6 @@ export default function ShiftsPage() {
         start_time: startTime.toISOString(),
         end_time: adjustedEndTime.toISOString(),
         position_id: formData.position_id || null,
-        position: formData.position || null, // Legacy field
         notes: formData.notes || null,
         status: formData.status
       }
@@ -1408,7 +1403,6 @@ export default function ShiftsPage() {
         start_time: newStart.toISOString(),
         end_time: newEnd.toISOString(),
         position_id: copyingShift.position_id || null,
-        position: copyingShift.position || null, // Legacy field
         notes: copyingShift.notes || null,
         status: copyingShift.status
       }
