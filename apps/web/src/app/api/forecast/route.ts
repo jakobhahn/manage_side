@@ -700,7 +700,7 @@ async function saveForecasts(organizationId: string, forecast: ForecastData[], w
   }
 }
 
-async function updateForecastsWithActuals(organizationId: string, startDate: string, endDate: string) {
+async function updateForecastsWithActuals(organizationId: string, startDate: string, _endDate: string) {
   try {
     const today = new Date()
     today.setHours(0, 0, 0, 0)
