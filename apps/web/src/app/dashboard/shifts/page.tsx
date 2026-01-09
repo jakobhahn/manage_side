@@ -638,7 +638,6 @@ export default function ShiftsPage() {
       start_time: startDateTime,
       end_time: endDateTime,
       position_id: shift.position_id || '',
-      position: shift.position || '',
       notes: shift.notes || '',
       status: shift.status === 'scheduled' || shift.status === 'confirmed' ? shift.status : 'scheduled',
     })
