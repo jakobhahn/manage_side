@@ -4,7 +4,7 @@ import { useState, useEffect } from 'react'
 import { createClient } from '@supabase/supabase-js'
 import { useRouter } from 'next/navigation'
 import Link from 'next/link'
-import { Clock, Calendar, MapPin, ArrowLeft, Plus, Edit, Trash2, Settings, LogOut, Loader2, ChevronLeft, ChevronRight, Grid3x3, List, User, AlertCircle, CheckCircle, FileCheck, XCircle, Briefcase, Check, X, Save, FileText } from 'lucide-react'
+import { Clock, Calendar, ArrowLeft, Plus, Edit, Trash2, Settings, LogOut, Loader2, ChevronLeft, ChevronRight, Grid3x3, List, User, AlertCircle, CheckCircle, FileCheck, XCircle, Briefcase, Check, X, Save, FileText } from 'lucide-react'
 
 interface Position {
   id: string
