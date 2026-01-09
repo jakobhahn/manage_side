@@ -78,7 +78,7 @@ export default function VacationPage() {
     try {
       const { data: { session } } = await supabase.auth.getSession()
       if (!session) {
-        router.push('/auth/login')
+        router.push('/auth/login' as any)
         return
       }
 
