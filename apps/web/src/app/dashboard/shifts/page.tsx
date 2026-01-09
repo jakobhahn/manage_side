@@ -279,7 +279,6 @@ export default function ShiftsPage() {
             start_time: '',
             end_time: '',
             position_id: '',
-            position: '',
             notes: '',
             status: 'scheduled'
           })
@@ -609,7 +608,6 @@ export default function ShiftsPage() {
         start_time: '',
         end_time: '',
         position_id: '',
-        position: '',
         notes: '',
         status: 'scheduled'
       })
@@ -717,7 +715,6 @@ export default function ShiftsPage() {
         start_time: '',
         end_time: '',
         position_id: '',
-        position: '',
         notes: '',
         status: 'scheduled'
       })
@@ -1513,7 +1510,6 @@ export default function ShiftsPage() {
       start_time: startDateTime.toISOString().slice(0, 16),
       end_time: endDateTime.toISOString().slice(0, 16),
       position_id: '',
-      position: '',
       notes: '',
       status: 'scheduled'
     })
@@ -1867,8 +1863,8 @@ export default function ShiftsPage() {
     e.preventDefault()
     if (draggingShift) {
       // If hour/minute not provided, calculate from mouse position
-      let dropHour = hour
-      let dropMinute = minute || 0
+      let dropHour: number
+      let dropMinute: number
       
       if (hour === undefined || minute === undefined) {
         const rect = (e.currentTarget as HTMLElement).getBoundingClientRect()
@@ -1877,6 +1873,9 @@ export default function ShiftsPage() {
         const totalMinutes = ((y / 100) * (timeRange.end - timeRange.start) * 60)
         dropHour = Math.floor(totalMinutes / 60) + timeRange.start
         dropMinute = Math.floor((totalMinutes % 60) / 15) * 15
+      } else {
+        dropHour = hour
+        dropMinute = minute
       }
       
       setDropTarget({ date, hour: dropHour, minute: dropMinute })
@@ -2790,7 +2789,6 @@ export default function ShiftsPage() {
                                               start_time: slotDate.toISOString().slice(0, 16),
                                               end_time: new Date(slotDate.getTime() + 4 * 60 * 60 * 1000).toISOString().slice(0, 16),
                                               position_id: positionId || '',
-                                              position: '',
                                               notes: '',
                                               status: 'scheduled'
                                             })
