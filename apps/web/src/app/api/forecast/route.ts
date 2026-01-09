@@ -49,8 +49,8 @@ export async function GET(request: NextRequest) {
   try {
     const { searchParams } = new URL(request.url)
     const organizationId = searchParams.get('organizationId')
-    const _startDate = searchParams.get('startDate')
-    const _endDate = searchParams.get('endDate')
+    // Note: startDate and endDate query params are available but not currently used
+    // The forecast always uses the next 14 days from today
 
     if (!organizationId) {
       return NextResponse.json({ error: 'Organization ID required' }, { status: 400 })
