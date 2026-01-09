@@ -108,17 +108,17 @@ export async function POST(request: NextRequest) {
     console.log = (...args: any[]) => {
       const message = args.map(a => typeof a === 'object' ? JSON.stringify(a, null, 2) : String(a)).join(' ')
       logs.push(`[LOG] ${message}`)
-      originalLog(...args)
+      originalLog?.(...args)
     }
     console.error = (...args: any[]) => {
       const message = args.map(a => typeof a === 'object' ? JSON.stringify(a, null, 2) : String(a)).join(' ')
       logs.push(`[ERROR] ${message}`)
-      originalError(...args)
+      originalError?.(...args)
     }
     console.warn = (...args: any[]) => {
       const message = args.map(a => typeof a === 'object' ? JSON.stringify(a, null, 2) : String(a)).join(' ')
       logs.push(`[WARN] ${message}`)
-      originalWarn(...args)
+      originalWarn?.(...args)
     }
 
     try {
