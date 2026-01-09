@@ -164,7 +164,7 @@ export default function ShiftsPage() {
   const [leftColumnView, setLeftColumnView] = useState<'employees' | 'positions'>('employees')
   const [calendarSortMode, setCalendarSortMode] = useState<'name' | 'position'>('name')
   const [currentWeek, setCurrentWeek] = useState(new Date())
-  const [selectedDate, setSelectedDate] = useState<Date | null>(null)
+  const [_selectedDate, _setSelectedDate] = useState<Date | null>(null)
   const [selectedTimeSlot, setSelectedTimeSlot] = useState<{ date: Date, hour: number } | null>(null)
   const [showShiftDialog, setShowShiftDialog] = useState(false)
   const [showEditModal, setShowEditModal] = useState(false)
@@ -177,7 +177,7 @@ export default function ShiftsPage() {
   const [hoursSummaryMonth, setHoursSummaryMonth] = useState(new Date().getMonth() + 1) // 1-12
   const [hoursSummaryYear, setHoursSummaryYear] = useState(new Date().getFullYear())
   const [draggingShift, setDraggingShift] = useState<Shift | null>(null)
-  const [dragOffset, setDragOffset] = useState({ x: 0, y: 0 })
+  const [_dragOffset, setDragOffset] = useState({ x: 0, y: 0 })
   const [dropTarget, setDropTarget] = useState<{ date: Date, hour: number, minute: number } | null>(null)
   const [copyingShift, setCopyingShift] = useState<Shift | null>(null)
   const [formData, setFormData] = useState<ShiftFormData>({
@@ -493,7 +493,7 @@ export default function ShiftsPage() {
     })
   }
 
-  const formatDateTime = (dateString: string) => {
+  const _formatDateTime = (dateString: string) => {
     const date = new Date(dateString)
     return date.toLocaleString('de-DE', {
       day: '2-digit',
@@ -1450,7 +1450,7 @@ export default function ShiftsPage() {
     return week
   }
 
-  const getShiftsForDateAndHour = (date: Date, hour: number): Shift[] => {
+  const _getShiftsForDateAndHour = (date: Date, hour: number): Shift[] => {
     return shifts.filter(shift => {
       const shiftStart = new Date(shift.start_time)
       const shiftDate = new Date(shiftStart.getFullYear(), shiftStart.getMonth(), shiftStart.getDate())
@@ -1486,7 +1486,7 @@ export default function ShiftsPage() {
     })
   }
 
-  const handleTimeSlotClick = (date: Date, hour: number, minutes: number = 0) => {
+  const _handleTimeSlotClick = (date: Date, hour: number, minutes: number = 0) => {
     if (user?.role !== 'manager' && user?.role !== 'owner') return
     
     setSelectedTimeSlot({ date, hour })
@@ -1759,7 +1759,7 @@ export default function ShiftsPage() {
 
   // Get initials from name
   // Render multi-position avatar with proportional colors
-  const renderMultiPositionAvatar = (positions: Position[], initials: string, size: number = 32) => {
+  const renderMultiPositionAvatar = (_positions: Position[], initials: string, size: number = 32) => {
     // Always use gray background for employee avatars
     return (
       <div 
@@ -1879,7 +1879,7 @@ export default function ShiftsPage() {
     e.dataTransfer.dropEffect = 'move'
   }
 
-  const calculateTimeFromPosition = (date: Date, y: number): { hour: number, minute: number } => {
+  const _calculateTimeFromPosition = (_date: Date, y: number): { hour: number, minute: number } => {
     // Each hour is 80px tall, so calculate which hour and minute
     const hourHeight = 80
     const totalMinutes = Math.floor((y / hourHeight) * 60)
@@ -2721,7 +2721,7 @@ export default function ShiftsPage() {
                           {positionsWithShiftsInWeek.map(({ position, positionId, shifts: positionShifts }, posIndex) => {
                             // Count unique employees for this position
                             const uniqueEmployees = new Set(positionShifts.map(s => s.user_id).filter(id => id !== null))
-                            const employeeCount = uniqueEmployees.size
+                            const _employeeCount = uniqueEmployees.size
                             
                             return (
                               <div key={positionId || `no-position-${posIndex}`} className="grid grid-cols-8 border-b border-gray-200" style={{ height: '100px', position: 'relative' }}>
@@ -2945,8 +2945,8 @@ export default function ShiftsPage() {
                       return (
                         <div key="name-mode" className="relative" style={{ height: `${containerHeight}px` }}>
                           {/* Employee Rows */}
-                          {sortedEmployees.map((employee, empIndex) => {
-                            const userShifts = shifts.filter(s => s.user_id === employee.id)
+                          {sortedEmployees.map((employee, _empIndex) => {
+                            const _userShifts = shifts.filter(s => s.user_id === employee.id)
                             // Get employee positions
                             const employeePositions = userPositions
                               .filter(up => up.user_id === employee.id && up.position)
@@ -2957,7 +2957,7 @@ export default function ShiftsPage() {
                             const allEmployeePositions = employeePositions.length > 0 
                               ? employeePositions 
                               : (legacyPosition ? [legacyPosition] : [])
-                            const primaryPosition = allEmployeePositions.length > 0 ? allEmployeePositions[0] : null
+                            const _primaryPosition = allEmployeePositions.length > 0 ? allEmployeePositions[0] : null
                             
                             return (
                               <div key={employee.id} className="grid grid-cols-8 border-b border-gray-200" style={{ height: '100px' }}>
@@ -2980,7 +2980,7 @@ export default function ShiftsPage() {
                                 {getWeekDays(currentWeek).map((date, dayIndex) => {
                                   const dayShifts = getShiftsForEmployeeAndDate(employee.id, date)
                                   const timeRange = getDayTimeRange()
-                                  const hourHeight = 100 / (timeRange.end - timeRange.start) // height per hour
+                                  const _hourHeight = 100 / (timeRange.end - timeRange.start) // height per hour
                                   const employeeVacation = getVacationForDate(date).find(v => v.user_id === employee.id)
 
                                   return (
@@ -3659,7 +3659,7 @@ export default function ShiftsPage() {
                       const clockMins = clockMinutes % 60
                       const shiftHours = Math.floor(shiftMinutes / 60)
                       const shiftMins = shiftMinutes % 60
-                      const employee = organizationUsers.find(u => u.id === userId)
+                      const _employee = organizationUsers.find(u => u.id === userId)
                       
                       return (
                         <div key={userId} className="px-6 py-2 hover:bg-gray-50 transition-colors h-16 flex items-center">

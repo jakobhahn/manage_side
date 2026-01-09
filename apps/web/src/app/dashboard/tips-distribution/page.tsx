@@ -12,7 +12,6 @@ import {
   Settings,
   LogOut,
   DollarSign,
-  Users,
   Clock,
   ChevronLeft,
   ChevronRight
