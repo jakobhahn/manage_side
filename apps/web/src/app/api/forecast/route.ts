@@ -49,8 +49,8 @@ export async function GET(request: NextRequest) {
   try {
     const { searchParams } = new URL(request.url)
     const organizationId = searchParams.get('organizationId')
-    const startDate = searchParams.get('startDate')
-    const endDate = searchParams.get('endDate')
+    const _startDate = searchParams.get('startDate')
+    const _endDate = searchParams.get('endDate')
 
     if (!organizationId) {
       return NextResponse.json({ error: 'Organization ID required' }, { status: 400 })
