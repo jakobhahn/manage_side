@@ -998,7 +998,6 @@ export default function ShiftsPage() {
       start_time: '',
       end_time: '',
       position_id: '',
-      position: '',
       notes: '',
       status: 'scheduled'
     })
@@ -3020,7 +3019,6 @@ export default function ShiftsPage() {
                                               start_time: slotDate.toISOString().slice(0, 16),
                                               end_time: new Date(slotDate.getTime() + 4 * 60 * 60 * 1000).toISOString().slice(0, 16),
                                               position_id: '',
-                                              position: '',
                                               notes: '',
                                               status: 'scheduled'
                                             })
@@ -3205,7 +3203,6 @@ export default function ShiftsPage() {
                                             start_time: slotDate.toISOString().slice(0, 16),
                                             end_time: new Date(slotDate.getTime() + 4 * 60 * 60 * 1000).toISOString().slice(0, 16),
                                             position_id: '',
-                                            position: '',
                                             notes: '',
                                             status: 'scheduled'
                                           })
