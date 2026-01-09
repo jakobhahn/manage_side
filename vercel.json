@@ -1,27 +1,13 @@
 {
-  "buildCommand": "./scripts/migrate-and-build.sh",
+  "buildCommand": "pnpm run build",
   "outputDirectory": "apps/web/.next",
-  "installCommand": "npm install",
+  "installCommand": "pnpm install",
   "framework": "nextjs",
-  "env": {
-    "SUPABASE_PROJECT_REF": "@supabase-project-ref",
-    "SUPABASE_ACCESS_TOKEN": "@supabase-access-token", 
-    "SUPABASE_DB_PASSWORD": "@supabase-db-password",
-    "NEXT_PUBLIC_SUPABASE_URL": "@next-public-supabase-url",
-    "NEXT_PUBLIC_SUPABASE_ANON_KEY": "@next-public-supabase-anon-key",
-    "SUPABASE_SERVICE_ROLE_KEY": "@supabase-service-role-key"
-  },
   "functions": {
     "apps/web/src/app/api/**/*.ts": {
       "runtime": "nodejs18.x"
     }
-  },
-  "rewrites": [
-    {
-      "source": "/api/(.*)",
-      "destination": "/apps/web/src/app/api/$1"
-    }
-  ]
+  }
 }
 
 
